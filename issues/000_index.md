@@ -127,28 +127,29 @@ Cross-platform support, optimizations, and documentation.
 
 | # | Issue | Status | Priority | Dependencies | Est. Time | Completion | Notes |
 |---|-------|--------|----------|--------------|-----------|------------|-------|
-| 051 | [Clean test output](051_clean_test_output.md) | ⬜ | 🔵 | #016 | 2h | 0% | Prevent ANSI sequences in test output |
+| 051 | [Clean test output](051_clean_test_output.md) | ✅ | 🔵 | #016 | 2h | 100% | Prevent ANSI sequences in test output |
 | 052 | [Integrate resize detection with screen buffer system](052_integrate_screen_resize.md) | ⬜ | 🔴 | #007, #009 | 3h | 0% | Screen buffers need resize handling |
 | 053 | [Optimize Windows resize detection for efficiency](053_optimize_windows_resize.md) | ⬜ | 🟡 | #007 | 2h | 0% | Replace polling with event-driven approach |
 | 054 | [Ensure signal handler safety in resize system](054_signal_handler_safety.md) | ⬜ | 🟡 | #007 | 2h | 0% | Fix race conditions in SIGWINCH handling |
+| 055 | [Fix Screen API mismatch in tests](055_fix_screen_api_mismatch.md) | ⬜ | 🔴 | #009,#017 | 1h | 0% | Fix API inconsistency preventing screen tests |
 
 ---
 
 ## Progress Metrics
 
 ### Overall Progress
-- **Total Issues**: 54 (including new Issues #052-#054)
-- **Completed**: 10 (19%)
+- **Total Issues**: 55 (including new Issues #052-#055)
+- **Completed**: 11 (20%)
 - **Partial**: 9 (17%)
-- **Broken/Needs Fix**: 1 (2%)
-- **Pending**: 34 (62%)
+- **Broken/Needs Fix**: 2 (4%)
+- **Pending**: 32 (58%)
 
 ### Phase Progress
 - **Phase 1 (Foundation)**: 70% complete (10 done, 6 partial, 1 broken, 3 pending)
 - **Phase 2 (Widgets)**: 8% complete (0 done, 1 partial, 9 pending)
 - **Phase 3 (Layouts)**: 30% complete (0 done, 4 partial, 6 pending)
 - **Phase 4 (Polish)**: 0% complete (all pending)
-- **Additional Issues**: 4 pending (Issues #051-#054)
+- **Additional Issues**: 5 total (1 completed, 4 pending - Issues #051-#055)
 
 ### Priority Distribution
 - **🔴 Critical**: 8 issues (7 done, 1 partial)

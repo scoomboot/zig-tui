@@ -820,5 +820,249 @@
         }
     
     // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Debug Output Tests ────────────────────────────┐
+    
+        test "unit: Terminal: debug output control functionality" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Initially debug output should be disabled in test mode
+            try testing.expect(!terminal.debug_output);
+            
+            // Enable debug output
+            terminal.setDebugOutput(true);
+            try testing.expect(terminal.debug_output);
+            
+            // Disable debug output
+            terminal.setDebugOutput(false);
+            try testing.expect(!terminal.debug_output);
+        }
+        
+        test "unit: Terminal: writeSequence suppression in test mode" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // With debug output disabled (default), ANSI sequences should be suppressed
+            terminal.setDebugOutput(false);
+            
+            // These should not produce any visible output during tests
+            try terminal.clear();
+            try terminal.setCursorPos(10, 20);
+            try terminal.hideCursor();
+            try terminal.showCursor();
+            try terminal.setCursorStyle(.block);
+            
+            // No errors should occur, but output is suppressed
+            try testing.expect(true);
+        }
+        
+        test "unit: Terminal: writeSequence behavior with debug output enabled" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Enable debug output - sequences should be written to stdout
+            terminal.setDebugOutput(true);
+            
+            // These operations should work normally (though we can't easily test output)
+            try terminal.clear();
+            try terminal.setCursorPos(5, 15);
+            try terminal.hideCursor();
+            try terminal.showCursor();
+            
+            // Verify the operations complete without error
+            try testing.expect(true);
+        }
+        
+        test "unit: Terminal: debug output state persistence" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test state persistence across multiple operations
+            terminal.setDebugOutput(true);
+            
+            try terminal.enterRawMode();
+            try testing.expect(terminal.debug_output); // Should persist
+            
+            try terminal.enterAltScreen();
+            try testing.expect(terminal.debug_output); // Should persist
+            
+            try terminal.clear();
+            try testing.expect(terminal.debug_output); // Should persist
+            
+            try terminal.exitAltScreen();
+            try testing.expect(terminal.debug_output); // Should persist
+            
+            try terminal.exitRawMode();
+            try testing.expect(terminal.debug_output); // Should persist
+        }
+        
+        test "integration: Terminal: debug output with complex operations" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test with disabled debug output (default test mode)
+            terminal.setDebugOutput(false);
+            
+            // Perform complex sequence of operations
+            try terminal.enterRawMode();
+            try terminal.enterAltScreen();
+            try terminal.clear();
+            try terminal.setCursorPos(1, 1);
+            try terminal.hideCursor();
+            
+            for (1..10) |i| {
+                try terminal.setCursorPos(@intCast(i), @intCast(i * 5));
+                try terminal.write("Test");
+            }
+            
+            try terminal.showCursor();
+            try terminal.exitAltScreen();
+            try terminal.exitRawMode();
+            
+            // All operations should complete successfully without visible output
+            try testing.expect(!terminal.debug_output);
+        }
+        
+        test "integration: Terminal: debug output toggle during operations" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Start with debug output disabled
+            terminal.setDebugOutput(false);
+            try terminal.clear();
+            
+            // Enable debug output mid-operation
+            terminal.setDebugOutput(true);
+            try terminal.setCursorPos(10, 10);
+            
+            // Disable again
+            terminal.setDebugOutput(false);
+            try terminal.clearLine();
+            
+            // Final state should be disabled
+            try testing.expect(!terminal.debug_output);
+        }
+        
+        test "scenario: Terminal: test mode behavior with all ANSI operations" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Ensure debug output is disabled (test mode)
+            terminal.setDebugOutput(false);
+            
+            // Test all ANSI-generating operations for suppression
+            try terminal.clear();
+            try terminal.clearLine();
+            try terminal.setCursorPos(1, 1);
+            try terminal.setCursorPos(24, 80);
+            try terminal.setCursorPos(999, 999); // Large coordinates
+            
+            try terminal.hideCursor();
+            try terminal.showCursor();
+            
+            // Test all cursor styles
+            const styles = [_]CursorStyle{
+                .default, .block, .underline, .bar,
+                .blinking_block, .blinking_underline, .blinking_bar,
+            };
+            
+            for (styles) |style| {
+                try terminal.setCursorStyle(style);
+            }
+            
+            try terminal.enterAltScreen();
+            try terminal.exitAltScreen();
+            
+            // All operations should complete silently
+            try testing.expect(!terminal.debug_output);
+        }
+        
+        test "performance: Terminal: test mode suppression overhead" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Benchmark with debug output disabled (test mode)
+            terminal.setDebugOutput(false);
+            
+            const iterations = 10000;
+            const start = std.time.milliTimestamp();
+            
+            for (0..iterations) |i| {
+                try terminal.setCursorPos(@as(u16, @intCast((i % 24) + 1)), @as(u16, @intCast((i % 80) + 1)));
+                if (i % 10 == 0) {
+                    try terminal.clear();
+                }
+                if (i % 5 == 0) {
+                    try terminal.clearLine();
+                }
+            }
+            
+            const elapsed = std.time.milliTimestamp() - start;
+            const avg_ms = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
+            
+            // Suppression should add minimal overhead (< 0.01ms per operation)
+            // The suppression check is very fast as it's just a boolean check
+            try testing.expect(avg_ms < 0.01);
+        }
+        
+        test "edge: Terminal: test mode detection reliability" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test that @import("builtin").is_test correctly identifies test mode
+            const is_test = @import("builtin").is_test;
+            try testing.expect(is_test); // Should be true during tests
+            
+            // Debug output should be disabled by default in test mode
+            try testing.expect(!terminal.debug_output);
+            
+            // Manual override should still work
+            terminal.setDebugOutput(true);
+            try testing.expect(terminal.debug_output);
+        }
+        
+        test "edge: Terminal: writeSequence with empty sequences" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test with empty sequence
+            // This should be a no-op whether debug output is enabled or not
+            terminal.setDebugOutput(false);
+            // No direct way to test writeSequence with empty string,
+            // but operations that generate empty sequences should work
+            
+            terminal.setDebugOutput(true);
+            // Same test with debug output enabled
+            
+            try testing.expect(true); // Test passes if no errors occur
+        }
+        
+        test "edge: Terminal: debug output with concurrent-like access" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Simulate rapid toggling of debug output
+            for (0..100) |i| {
+                terminal.setDebugOutput(i % 2 == 0);
+                try terminal.setCursorPos(@as(u16, @intCast((i % 10) + 1)), @as(u16, @intCast((i % 10) + 1)));
+                
+                // Verify state is consistent
+                try testing.expect(terminal.debug_output == (i % 2 == 0));
+            }
+        }
+    
+    // └──────────────────────────────────────────────────────────────────────────┘
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝

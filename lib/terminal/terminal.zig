@@ -168,6 +168,13 @@
         size: Size,
         ansi_builder: ansi.Ansi,
         
+        // ┌──────────────────────────── Output Control ────────────────────────────┐
+        
+            // Output control for testing and debugging
+            debug_output: bool,
+            
+        // └──────────────────────────────────────────────────────────────────────┘
+        
         // Size detection and caching
         size_cache: ?Size,
         size_constraints: SizeConstraints,
@@ -204,6 +211,7 @@
                     .cursor_visible = true,
                     .size = Size{ .rows = 24, .cols = 80 }, // Temporary default
                     .ansi_builder = ansi.Ansi.init(allocator),
+                    .debug_output = false,
                     .size_cache = null,
                     .size_constraints = SizeConstraints{},
                     .resize_callbacks = std.ArrayList(ResizeCallback).init(allocator),
@@ -229,6 +237,9 @@
                     .cursor_visible = true,
                     .size = size,
                     .ansi_builder = ansi.Ansi.init(allocator),
+                    
+                    // Initialize output control (disabled in test mode by default)
+                    .debug_output = false,
                     
                     // Initialize size detection and caching
                     .size_cache = size,
@@ -464,11 +475,54 @@
                 try self.writeSequence(seq);
             }
 
+            /// Enable or disable debug output during tests.
+            ///
+            /// When debug_output is enabled, ANSI escape sequences will be written
+            /// to stdout even during test execution. This is useful for debugging
+            /// terminal behavior when developing tests.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Terminal instance pointer
+            /// - `enabled`: Whether to enable debug output
+            ///
+            /// __Return__
+            ///
+            /// - `void`: This function does not return a value
+            pub fn setDebugOutput(self: *Terminal, enabled: bool) void {
+                self.debug_output = enabled;
+            }
+
         // └──────────────────────────────────────────────────────────────────┘
 
         // ┌──────────────────────────── Internal Helpers ────────────────────────────┐
 
-            fn writeSequence(self: *Terminal, seq: []const u8) !void {
+            /// Write ANSI escape sequence to terminal output.
+            ///
+            /// Performance optimized with early return for test mode to avoid
+            /// unnecessary I/O operations during test execution. Branch prediction
+            /// favors production mode path for optimal performance.
+            /// 
+            /// In test mode, ANSI sequences are suppressed by default to keep test
+            /// output clean and readable. This behavior can be overridden by setting
+            /// the debug_output field to true for debugging purposes.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Terminal instance pointer
+            /// - `seq`: ANSI escape sequence bytes to write
+            ///
+            /// __Return__
+            ///
+            /// - `void`: Success, sequence written to stdout
+            /// - `std.fs.File.WriteError`: Write operation failed
+            inline fn writeSequence(self: *Terminal, seq: []const u8) !void {
+                // Test mode optimization: Early branch to eliminate I/O overhead
+                // during testing while preserving debug capability
+                const is_test = @import("builtin").is_test;
+                if (is_test and !self.debug_output) {
+                    return; // Zero-cost discard path for test performance
+                }
                 _ = try self.stdout.write(seq);
             }
 
