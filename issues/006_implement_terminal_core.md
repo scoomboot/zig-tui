@@ -295,3 +295,10 @@ Create the main Terminal implementation that combines raw mode handling and ANSI
 
 ## Category
 Terminal Core
+
+## Integration Note (2025-08-24)
+⚠️ **IMPORTANT**: The current terminal.zig implementation uses the old function-based raw_mode API (`enable_raw_mode()`, `restore_mode()`, `Termios`). This needs to be updated to use the new RawMode struct that was implemented in Issue #004. The terminal module should:
+- Create and manage a RawMode instance
+- Use `RawMode.init()`, `enter()`, and `exit()` methods
+- Remove direct Termios handling
+- Follow the implementation pattern shown in the Implementation Notes section below
