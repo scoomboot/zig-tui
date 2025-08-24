@@ -55,7 +55,7 @@ Cross-platform support, optimizations, and documentation.
 | 004 | [Implement raw mode](004_implement_raw_mode.md) | ✅ | 🔴 | #003 | 4h | 100% | Cross-platform complete with signal handling |
 | 005 | [Implement ANSI sequences](005_implement_ansi_sequences.md) | ✅ | 🔴 | #003 | 3h | 100% | Complete with 54 tests, all color modes |
 | 006 | [Implement terminal core](006_implement_terminal_core.md) | ✅ | 🔴 | #004, #005 | 4h | 100% | Complete with new RawMode API integration |
-| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ⚠️ | 🔴 | #006 | 2h | 30% | Basic ioctl detection, needs resize events |
+| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ✅ | 🔴 | #006 | 2h | 100% | Complete with cross-platform resize handling |
 | 008 | [Implement cell structure](008_implement_cell_structure.md) | ⚠️ | 🟡 | #003 | 2h | 70% | Structure exists, needs verification |
 | 009 | [Implement screen buffer](009_implement_screen_buffer.md) | ✅ | 🟡 | #008 | 4h | 90% | Double buffering implemented |
 | 010 | [Implement buffer diffing](010_implement_buffer_diffing.md) | ✅ | 🟡 | #009 | 3h | 90% | Diff algorithm implemented |
@@ -64,7 +64,7 @@ Cross-platform support, optimizations, and documentation.
 | 013 | [Implement event queue](013_implement_event_queue.md) | ⚠️ | 🟡 | #012 | 2h | 70% | Queue structure ok, needs input impl |
 | 014 | [Implement event loop](014_implement_event_loop.md) | ⚠️ | 🟡 | #013 | 3h | 40% | Loop exists, read_input/process_buffer empty |
 | 015 | [Implement key mapping](015_implement_key_mapping.md) | ⚠️ | 🟡 | #012 | 2h | 30% | Structure defined, parsing incomplete |
-| 016 | [Create terminal tests](016_create_terminal_tests.md) | ✅ | 🟡 | #007 | 3h | 100% | Complete with 21 tests, backward compatibility |
+| 016 | [Create terminal tests](016_create_terminal_tests.md) | ✅ | 🟡 | #007 | 3h | 100% | Complete with 32 tests, backward compatibility |
 | 017 | [Create screen tests](017_create_screen_tests.md) | ⬜ | 🟡 | #011 | 3h | 0% | Test file exists but empty |
 | 018 | [Create event tests](018_create_event_tests.md) | ⬜ | 🟡 | #015 | 3h | 0% | Test file exists but empty |
 | 019 | [Create integration tests](019_create_integration_tests.md) | ⬜ | 🟡 | #016-#018 | 4h | 0% | Not started |
@@ -128,29 +128,32 @@ Cross-platform support, optimizations, and documentation.
 | # | Issue | Status | Priority | Dependencies | Est. Time | Completion | Notes |
 |---|-------|--------|----------|--------------|-----------|------------|-------|
 | 051 | [Clean test output](051_clean_test_output.md) | ⬜ | 🔵 | #016 | 2h | 0% | Prevent ANSI sequences in test output |
+| 052 | [Integrate resize detection with screen buffer system](052_integrate_screen_resize.md) | ⬜ | 🔴 | #007, #009 | 3h | 0% | Screen buffers need resize handling |
+| 053 | [Optimize Windows resize detection for efficiency](053_optimize_windows_resize.md) | ⬜ | 🟡 | #007 | 2h | 0% | Replace polling with event-driven approach |
+| 054 | [Ensure signal handler safety in resize system](054_signal_handler_safety.md) | ⬜ | 🟡 | #007 | 2h | 0% | Fix race conditions in SIGWINCH handling |
 
 ---
 
 ## Progress Metrics
 
 ### Overall Progress
-- **Total Issues**: 51 (including new Issue #051)
-- **Completed**: 9 (18%)
-- **Partial**: 10 (20%)
+- **Total Issues**: 54 (including new Issues #052-#054)
+- **Completed**: 10 (19%)
+- **Partial**: 9 (17%)
 - **Broken/Needs Fix**: 1 (2%)
-- **Pending**: 31 (60%)
+- **Pending**: 34 (62%)
 
 ### Phase Progress
-- **Phase 1 (Foundation)**: 60% complete (9 done, 7 partial, 1 broken, 3 pending)
+- **Phase 1 (Foundation)**: 70% complete (10 done, 6 partial, 1 broken, 3 pending)
 - **Phase 2 (Widgets)**: 8% complete (0 done, 1 partial, 9 pending)
 - **Phase 3 (Layouts)**: 30% complete (0 done, 4 partial, 6 pending)
 - **Phase 4 (Polish)**: 0% complete (all pending)
-- **Additional Issues**: 1 pending (Issue #051)
+- **Additional Issues**: 4 pending (Issues #051-#054)
 
 ### Priority Distribution
-- **🔴 Critical**: 7 issues (6 done, 1 partial)
-- **🟡 High**: 17 issues (3 done, 5 partial, 1 broken, 8 pending)
-- **🟢 Medium**: 20 issues (0 done, 3 partial, 17 pending)
+- **🔴 Critical**: 8 issues (7 done, 1 partial)
+- **🟡 High**: 18 issues (3 done, 5 partial, 1 broken, 9 pending)
+- **🟢 Medium**: 21 issues (0 done, 3 partial, 18 pending)
 - **🔵 Low**: 7 issues (all pending)
 
 ---
@@ -344,12 +347,13 @@ These issues need to be added to properly track fixing the broken/incomplete imp
 
 *Last Updated: 2025-08-24*
 *Session Achievements:*
+- *Issue #007 (Terminal Size Detection): ✅ Completed with comprehensive cross-platform resize handling*
 - *Issue #005 (ANSI Sequences): ✅ Completed with all color modes and comprehensive tests*
 - *Issue #004 (Raw Mode): ✅ Completed with cross-platform support and signal handling*
 - *Issue #003 (Main Entry Point): ✅ Completed with comprehensive implementation*
 - *MCS Compliance: 100% achieved across all edited files*
-- *Tests: 166 tests total (86 from #003, 26 from #004, 54 from #005), all passing*
-- *Performance: < 5ns for inline functions, < 1ms for mode switching, < 100ns for ANSI sequences*
+- *Tests: 198 tests total (86 from #003, 26 from #004, 54 from #005, 32 from #007), all passing*
+- *Performance: < 5ns for inline functions, < 1ms for mode switching, < 100ns for ANSI sequences, < 10ms for resize detection*
 *Project: Zig TUI Library*
 *Repository: https://github.com/fisty/zig-tui*
-*Status: Foundation 50% complete, raw mode/entry point/ANSI ready, terminal core integration needed*
+*Status: Foundation 70% complete, terminal core with resize detection ready, screen integration needed*

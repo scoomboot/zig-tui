@@ -1,9 +1,10 @@
 // terminal.test.zig — Comprehensive tests for terminal operations
 //
 // repo   : https://github.com/fisty/zig-tui
+// docs   : https://fisty.github.io/zig-tui/terminal
 // author : https://github.com/fisty
 //
-// Tests for terminal initialization, cleanup, and state management.
+// Vibe coded by Fisty.
 
 // ╔══════════════════════════════════════ PACK ══════════════════════════════════════╗
 
@@ -15,15 +16,44 @@
     const Position = terminal_module.Position;
     const CursorStyle = terminal_module.CursorStyle;
     const TerminalError = terminal_module.TerminalError;
+    const SizeConstraints = terminal_module.SizeConstraints;
+    const ResizeEvent = terminal_module.ResizeEvent;
+    const ResizeCallback = terminal_module.ResizeCallback;
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
 // ╔══════════════════════════════════════ INIT ══════════════════════════════════════╗
 
-    // Test constants
+    // Test constants - Comprehensive test data for terminal operations
     const TEST_TIMEOUT_MS = 1000;
     const MAX_TERMINAL_SIZE = 65535;
     const MIN_TERMINAL_SIZE = 1;
+    
+    // Size test data
+    const VALID_SIZES = [_]Size{
+        Size{ .rows = 24, .cols = 80 },   // Standard terminal
+        Size{ .rows = 25, .cols = 132 },  // Wide terminal
+        Size{ .rows = 50, .cols = 120 },  // Tall terminal
+        Size{ .rows = 1, .cols = 1 },     // Minimal terminal
+    };
+    
+    const INVALID_SIZES = [_]Size{
+        Size{ .rows = 0, .cols = 80 },    // Zero rows
+        Size{ .rows = 24, .cols = 0 },    // Zero cols
+        Size{ .rows = 0, .cols = 0 },     // Zero both
+    };
+    
+    // Cursor style test data
+    const CURSOR_STYLES = [_]CursorStyle{
+        .default, .block, .underline, .bar,
+        .blinking_block, .blinking_underline, .blinking_bar,
+    };
+    
+    // Global variables for test callbacks
+    var test_total_calls: u32 = 0;
+    var test_events_received: u32 = 0;
+    var test_last_event: ?ResizeEvent = null;
+    var test_resize_history: ?*std.ArrayList(ResizeEvent) = null;
     
     // Test helpers
     const TestTerminal = struct {
@@ -488,6 +518,305 @@
             try terminal.set_cursor_style(.block);
             
             try terminal.write("Test");
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+
+    // ┌──────────────────────────── Resize Functionality Tests ────────────────────────────┐
+    
+        test "unit: Size: equality and validation methods" {
+            const size1 = Size{ .rows = 24, .cols = 80 };
+            const size2 = Size{ .rows = 24, .cols = 80 };
+            const size3 = Size{ .rows = 25, .cols = 80 };
+            const invalid_size = Size{ .rows = 0, .cols = 80 };
+            
+            try testing.expect(size1.eql(size2));
+            try testing.expect(!size1.eql(size3));
+            try testing.expect(size1.isValid());
+            try testing.expect(!invalid_size.isValid());
+        }
+        
+        test "unit: SizeConstraints: apply and validate methods" {
+            const constraints = SizeConstraints{
+                .min_rows = 10,
+                .min_cols = 40,
+                .max_rows = 50,
+                .max_cols = 120,
+            };
+            
+            // Test applying constraints
+            const too_small = Size{ .rows = 5, .cols = 30 };
+            const too_large = Size{ .rows = 100, .cols = 200 };
+            const valid = Size{ .rows = 25, .cols = 80 };
+            
+            const constrained_small = constraints.apply(too_small);
+            const constrained_large = constraints.apply(too_large);
+            const constrained_valid = constraints.apply(valid);
+            
+            try testing.expect(constrained_small.rows == 10);
+            try testing.expect(constrained_small.cols == 40);
+            try testing.expect(constrained_large.rows == 50);
+            try testing.expect(constrained_large.cols == 120);
+            try testing.expect(constrained_valid.eql(valid));
+            
+            // Test validation
+            try testing.expect(!constraints.validate(too_small));
+            try testing.expect(!constraints.validate(too_large));
+            try testing.expect(constraints.validate(valid));
+        }
+        
+        test "unit: ResizeEvent: initialization with timestamp" {
+            const old_size = Size{ .rows = 24, .cols = 80 };
+            const new_size = Size{ .rows = 30, .cols = 100 };
+            
+            const event = ResizeEvent.init(old_size, new_size);
+            
+            try testing.expect(event.old_size.eql(old_size));
+            try testing.expect(event.new_size.eql(new_size));
+            try testing.expect(event.timestamp > 0);
+        }
+        
+        test "unit: Terminal: size constraints management" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            const constraints = SizeConstraints{
+                .min_rows = 20,
+                .min_cols = 60,
+                .max_rows = 40,
+                .max_cols = 120,
+            };
+            
+            terminal.setSizeConstraints(constraints);
+            
+            // Verify constraints are applied (cache should be invalidated)
+            try testing.expect(terminal.size_constraints.min_rows == 20);
+            try testing.expect(terminal.size_constraints.min_cols == 60);
+        }
+        
+        test "unit: Terminal: size caching behavior" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // First call should query and cache
+            const size1 = try terminal.getSize();
+            try testing.expect(size1.isValid());
+            
+            // Second call should use cache (assuming no actual terminal resize)
+            const size2 = try terminal.getSize();
+            try testing.expect(size1.eql(size2));
+            
+            // Force refresh should bypass cache
+            const size3 = try terminal.refreshSize();
+            try testing.expect(size3.isValid());
+        }
+        
+        test "unit: Terminal: resize callback registration" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Simple callback for testing registration
+            const callback = struct {
+                fn resizeHandler(event: ResizeEvent) void {
+                    _ = event;
+                    // Simple callback that does nothing
+                }
+            }.resizeHandler;
+            
+            try terminal.onResize(callback);
+            try testing.expect(terminal.resize_callbacks.items.len == 1);
+            
+            // Remove callback
+            terminal.removeResizeCallback(callback);
+            try testing.expect(terminal.resize_callbacks.items.len == 0);
+        }
+        
+        test "integration: Terminal: resize monitoring lifecycle" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Initially not monitoring
+            try testing.expect(!terminal.resize_monitoring);
+            
+            // Start monitoring
+            try terminal.startResizeMonitoring();
+            try testing.expect(terminal.resize_monitoring);
+            
+            // Starting again should be idempotent
+            try terminal.startResizeMonitoring();
+            try testing.expect(terminal.resize_monitoring);
+            
+            // Stop monitoring
+            try terminal.stopResizeMonitoring();
+            try testing.expect(!terminal.resize_monitoring);
+            
+            // Stopping again should be idempotent
+            try terminal.stopResizeMonitoring();
+            try testing.expect(!terminal.resize_monitoring);
+        }
+        
+        test "integration: Terminal: resize event simulation" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Reset globals
+            test_events_received = 0;
+            test_last_event = null;
+            
+            const callback = struct {
+                fn resizeHandler(event: ResizeEvent) void {
+                    test_events_received += 1;
+                    test_last_event = event;
+                }
+            }.resizeHandler;
+            
+            try terminal.onResize(callback);
+            
+            // Simulate resize event
+            const old_size = terminal.size;
+            const new_size = Size{ .rows = old_size.rows + 5, .cols = old_size.cols + 10 };
+            
+            terminal.handleResize(new_size);
+            
+            try testing.expect(test_events_received == 1);
+            try testing.expect(test_last_event != null);
+            if (test_last_event) |event| {
+                try testing.expect(event.old_size.eql(old_size));
+                try testing.expect(event.new_size.eql(new_size));
+                try testing.expect(terminal.size.eql(new_size));
+            }
+            
+            // Simulate same size (should not trigger callback)
+            terminal.handleResize(new_size);
+            try testing.expect(test_events_received == 1); // Still 1, no change
+        }
+        
+        test "integration: Terminal: multiple size detection fallbacks" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Force refresh to test fallback mechanisms
+            // In a real terminal, system method should work
+            // In test environment, may fall back to default
+            const size = try terminal.refreshSize();
+            
+            try testing.expect(size.isValid());
+            try testing.expect(size.rows >= 1 and size.rows <= 9999);
+            try testing.expect(size.cols >= 1 and size.cols <= 9999);
+        }
+        
+        test "performance: Terminal: resize callback overhead" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Reset global counter
+            test_total_calls = 0;
+            
+            const simple_callback = struct {
+                fn handler(event: ResizeEvent) void {
+                    _ = event;
+                    test_total_calls += 1;
+                }
+            }.handler;
+            
+            // Add the same callback multiple times
+            for (0..10) |_| {
+                try terminal.onResize(simple_callback);
+            }
+            
+            // Time multiple resize events
+            const iterations = 50; // Reduced for test performance
+            const start = std.time.milliTimestamp();
+            
+            for (0..iterations) |i| {
+                // Ensure each size is unique and different from the initial size (24x80)
+                const size = Size{
+                    .rows = @as(u16, @intCast(25 + i)), // Start from 25, increment each time
+                    .cols = @as(u16, @intCast(81 + i)), // Start from 81, increment each time
+                };
+                terminal.handleResize(size);
+            }
+            
+            const elapsed = std.time.milliTimestamp() - start;
+            const avg_ms = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
+            
+            // Each resize with 10 callbacks should be fast
+            try testing.expect(avg_ms < 5.0); // Relaxed constraint for CI environments
+            
+            // Verify callbacks were called (10 callbacks * iterations)
+            try testing.expect(test_total_calls == 10 * iterations);
+        }
+        
+        test "scenario: Terminal: complete resize workflow" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Set up constraints
+            const constraints = SizeConstraints{
+                .min_rows = 10,
+                .min_cols = 40,
+                .max_rows = 100,
+                .max_cols = 200,
+            };
+            terminal.setSizeConstraints(constraints);
+            
+            // Set up resize tracking
+            var resize_history = std.ArrayList(ResizeEvent).init(allocator);
+            defer resize_history.deinit();
+            test_resize_history = &resize_history;
+            
+            const HistoryCallback = struct {
+                fn handler(event: ResizeEvent) void {
+                    if (test_resize_history) |history| {
+                        history.append(event) catch {};
+                    }
+                }
+            };
+            
+            try terminal.onResize(HistoryCallback.handler);
+            
+            // Start monitoring
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            // Simulate several resize events
+            const test_sizes = [_]Size{
+                Size{ .rows = 30, .cols = 100 },
+                Size{ .rows = 5, .cols = 30 },   // Will be constrained
+                Size{ .rows = 200, .cols = 300 }, // Will be constrained
+                Size{ .rows = 25, .cols = 85 },
+            };
+            
+            for (test_sizes) |size| {
+                terminal.handleResize(size);
+            }
+            
+            // Verify resize history
+            try testing.expect(resize_history.items.len == test_sizes.len);
+            
+            // Check that constraints were applied
+            for (resize_history.items, 0..) |event, i| {
+                const expected_size = constraints.apply(test_sizes[i]);
+                try testing.expect(event.new_size.eql(expected_size));
+                try testing.expect(event.timestamp > 0);
+                
+                if (i > 0) {
+                    // Ensure timestamps are in order
+                    try testing.expect(event.timestamp >= resize_history.items[i - 1].timestamp);
+                }
+            }
+            
+            // Final terminal size should match last constrained size
+            const final_expected = constraints.apply(test_sizes[test_sizes.len - 1]);
+            try testing.expect(terminal.size.eql(final_expected));
         }
     
     // └──────────────────────────────────────────────────────────────────┘
