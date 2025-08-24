@@ -55,6 +55,7 @@
         is_resizing: bool,
         terminal_ref: ?*terminal_mod.Terminal,
         needs_full_redraw: bool,
+        registry_id: ?u64,
         
         /// Initialize screen with given dimensions.
         ///
@@ -84,8 +85,12 @@
             var screen = try init_with_size(allocator, size.cols, size.rows);
             screen.terminal_ref = terminal;
             
-            // Register for resize events to enable automatic buffer resizing
-            try terminal.onResize(screenResizeCallback);
+            // Register with terminal's callback registry for resize events
+            const registry = terminal.getCallbackRegistry();
+            screen.registry_id = try registry.register(
+                @as(*anyopaque, @ptrCast(terminal)),
+                @as(*anyopaque, @ptrCast(&screen))
+            );
             
             return screen;
         }
@@ -131,6 +136,7 @@
                 .is_resizing = false,
                 .terminal_ref = null,
                 .needs_full_redraw = true,
+                .registry_id = null,
             };
         }
         
@@ -140,9 +146,15 @@
         ///
         /// - `self`: Screen instance to deinitialize
         pub fn deinit(self: *Screen) void {
-            // Unregister resize callback if terminal reference exists
-            if (self.terminal_ref) |terminal| {
-                terminal.removeResizeCallback(screenResizeCallback);
+            // Unregister from callback registry if registered
+            if (self.registry_id) |id| {
+                if (self.terminal_ref) |terminal| {
+                    const registry = terminal.getCallbackRegistry();
+                    registry.unregister(id) catch {
+                        // Silently ignore unregister errors during cleanup
+                        // This ensures deinit always succeeds
+                    };
+                }
             }
             
             // Free screen buffers in reverse order of allocation
@@ -191,7 +203,24 @@
             self.back_buffer = new_back;
         }
         
-        /// Handle terminal resize event with thread safety and content preservation.
+        /// Handle terminal resize event with cols/rows parameters (for CallbackRegistry).
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: Screen instance to resize
+        /// - `new_cols`: New width in columns
+        /// - `new_rows`: New height in rows
+        /// - `mode`: Content preservation mode during resize
+        ///
+        /// __Return__
+        ///
+        /// - Error if resize fails or is already in progress
+        pub fn handleResize(self: *Screen, new_cols: u16, new_rows: u16, mode: ResizeMode) !void {
+            const new_size = Size{ .cols = new_cols, .rows = new_rows };
+            return self.handleResizeWithSize(new_size, mode);
+        }
+        
+        /// Handle terminal resize event with Size parameter.
         ///
         /// __Parameters__
         ///
@@ -202,7 +231,7 @@
         /// __Return__
         ///
         /// - Error if resize fails or is already in progress
-        pub fn handleResize(self: *Screen, new_size: Size, mode: ResizeMode) !void {
+        pub fn handleResizeWithSize(self: *Screen, new_size: Size, mode: ResizeMode) !void {
             // Thread safety: Acquire mutex for entire resize operation
             self.resize_mutex.lock();
             defer self.resize_mutex.unlock();
@@ -481,27 +510,5 @@
         }
     };
     
-    /// Resize callback function for terminal events.
-    ///
-    /// __Parameters__
-    ///
-    /// - `event`: ResizeEvent containing new terminal dimensions
-    ///
-    /// __Notes__
-    ///
-    /// - This callback bridges terminal resize events to screen handling
-    /// - Currently a placeholder pending proper screen registry implementation
-    /// - Will integrate with screen instance via weak references or registry pattern
-    fn screenResizeCallback(event: terminal_mod.ResizeEvent) void {
-        // Implementation note: This function requires a registry or weak reference
-        // system to properly associate the terminal with its screen instance.
-        // Future implementation will:
-        // 1. Look up the screen instance from a global registry
-        // 2. Call screen.handleResize() with appropriate resize mode
-        // 3. Support multiple screens per terminal if needed
-        //
-        // Performance optimization: Use atomic operations for thread-safe registry access
-        _ = event; // Suppress unused parameter warning for now
-    }
 
 // ╚════════════════════════════════════════════════════════════════════════════════════════╝

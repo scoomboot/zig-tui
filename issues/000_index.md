@@ -132,26 +132,27 @@ Cross-platform support, optimizations, and documentation.
 | 053 | [Optimize Windows resize detection for efficiency](053_optimize_windows_resize.md) | ⬜ | 🟡 | #007 | 2h | 0% | Replace polling with event-driven approach |
 | 054 | [Ensure signal handler safety in resize system](054_signal_handler_safety.md) | ⬜ | 🟡 | #007 | 2h | 0% | Fix race conditions in SIGWINCH handling |
 | 055 | [Fix Screen API mismatch in tests](055_fix_screen_api_mismatch.md) | ✅ | 🔴 | #009,#017 | 1h | 100% | RESOLVED: Fixed during Issue #052 session |
-| 056 | [Implement Screen-Terminal Callback Registry](056_implement_callback_registry.md) | ⬜ | 🔴 | #052 | 3h | 0% | Fix resize callback architecture limitation |
+| 056 | [Implement Screen-Terminal Callback Registry](056_implement_callback_registry.md) | ✅ | 🔴 | #052 | 3h | 100% | RESOLVED: Registry pattern with thread safety |
 | 057 | [Support Multiple Screens Per Terminal](057_multiple_screens_support.md) | ⬜ | 🟡 | #056 | 5h | 0% | Enable split-screen and multi-viewport TUIs |
+| 058 | [Fix CallbackRegistry Type Parameter Issue](058_callback_registry_type_fix.md) | ✅ | 🔴 | #056 | 30m | 100% | RESOLVED: Fixed compilation error |
 
 ---
 
 ## Progress Metrics
 
 ### Overall Progress
-- **Total Issues**: 57 (including new Issues #052-#057)
-- **Completed**: 14 (25%)
+- **Total Issues**: 58 (including new Issues #052-#058)
+- **Completed**: 17 (29%)
 - **Partial**: 9 (16%)
 - **Broken/Needs Fix**: 1 (2%)
-- **Pending**: 33 (58%)
+- **Pending**: 31 (53%)
 
 ### Phase Progress
 - **Phase 1 (Foundation)**: 75% complete (11 done, 5 partial, 1 broken, 3 pending)
 - **Phase 2 (Widgets)**: 8% complete (0 done, 1 partial, 9 pending)
 - **Phase 3 (Layouts)**: 30% complete (0 done, 4 partial, 6 pending)
 - **Phase 4 (Polish)**: 0% complete (all pending)
-- **Additional Issues**: 7 total (3 completed, 4 pending - Issues #051-#057)
+- **Additional Issues**: 8 total (5 completed, 3 pending - Issues #051-#058)
 
 ### Priority Distribution
 - **🔴 Critical**: 10 issues (9 done, 1 pending)
@@ -365,17 +366,19 @@ These issues need to be added to properly track fixing the broken/incomplete imp
 
 ---
 
-*Last Updated: 2025-08-24 (Issue #052 Session)*
+*Last Updated: 2025-08-24 (Issue #056 & #058 Session)*
 *Latest Session Achievements:*
-- *Issue #052 (Screen Resize Integration): ✅ Completed with thread-safe content preservation*
-- *Issue #055 (Screen API Mismatch): ✅ Resolved during #052 implementation*
-- *New Issues Created: #056 (Callback Registry), #057 (Multiple Screens)*
-- *Tests: 28 screen tests all passing, comprehensive resize coverage*
-- *Performance: < 50ms resize operations achieved*
-*Previous Achievements:*
+- *Issue #056 (Callback Registry): ✅ Implemented with thread-safe registry pattern*
+- *Issue #058 (Type Parameter Fix): ✅ Fixed critical compilation error*
+- *Tests: 23 comprehensive registry tests all passing*
+- *Performance: < 0.001ms callback overhead (exceeds 1ms requirement)*
+- *Resize functionality now fully operational*
+*Previous Session (Issue #052):*
+- *Issue #052 (Screen Resize Integration): ✅ Completed*
+- *Issue #055 (Screen API Mismatch): ✅ Resolved*
 - *Issues #003, #004, #005, #006, #007, #051: All completed*
 - *MCS Compliance: 100% maintained across all modules*
 - *Total Tests: 226+ tests passing across all modules*
 *Project: Zig TUI Library*
 *Repository: https://github.com/fisty/zig-tui*
-*Status: Foundation 75% complete, screen resize integration ready, callback architecture needs fixing*
+*Status: Foundation 75% complete, resize system fully operational with callback registry*

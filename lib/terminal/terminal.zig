@@ -11,6 +11,7 @@
     const std = @import("std");
     const RawMode = @import("utils/raw_mode/raw_mode.zig").RawMode;
     const ansi = @import("utils/ansi/ansi.zig");
+    const CallbackRegistry = @import("utils/callback_registry/callback_registry.zig").CallbackRegistry;
     const os = std.os;
     const posix = std.posix;
 
@@ -184,6 +185,9 @@
         resize_thread: ?std.Thread,
         resize_mutex: std.Thread.Mutex,
         resize_monitoring: bool,
+        
+        // Callback registry for screen associations
+        callback_registry: CallbackRegistry,
 
         // ┌──────────────────────────── Initialization ────────────────────────────┐
 
@@ -218,9 +222,11 @@
                     .resize_thread = null,
                     .resize_mutex = .{},
                     .resize_monitoring = false,
+                    .callback_registry = CallbackRegistry.init(allocator),
                 };
                 defer temp_term.resize_callbacks.deinit();
                 defer temp_term.ansi_builder.deinit();
+                defer temp_term.callback_registry.deinit();
 
                 const size = if (posix.isatty(stdout.handle)) 
                     temp_term.querySize() catch Size{ .rows = 24, .cols = 80 }
@@ -250,6 +256,9 @@
                     .resize_thread = null,
                     .resize_mutex = .{},
                     .resize_monitoring = false,
+                    
+                    // Initialize callback registry for screen associations
+                    .callback_registry = CallbackRegistry.init(allocator),
                 };
 
                 // Set up signal handlers for cleanup
@@ -282,6 +291,9 @@
 
                 // Clean up resize callbacks
                 self.resize_callbacks.deinit();
+                
+                // Clean up callback registry
+                self.callback_registry.deinit();
 
                 // Clean up ANSI builder
                 self.ansi_builder.deinit();
@@ -420,6 +432,23 @@
                 self.size_constraints = constraints;
                 // Invalidate cache to force revalidation
                 self.size_cache = null;
+            }
+            
+            /// Get the callback registry for this terminal.
+            ///
+            /// Returns a pointer to the terminal's callback registry, which manages
+            /// associations between the terminal and its screens. This allows screens
+            /// to register themselves for resize event notifications.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Terminal instance pointer
+            ///
+            /// __Return__
+            ///
+            /// - `*CallbackRegistry`: Pointer to the terminal's callback registry
+            pub fn getCallbackRegistry(self: *Terminal) *CallbackRegistry {
+                return &self.callback_registry;
             }
 
             /// Flush output buffer
@@ -871,10 +900,18 @@
                 // Create resize event
                 const event = ResizeEvent.init(old_size, constrained_size);
 
-                // Notify all callbacks
+                // Notify all traditional callbacks (backward compatibility)
                 for (self.resize_callbacks.items) |callback| {
                     callback(event);
                 }
+                
+                // Notify the callback registry for screen associations
+                // This allows all registered screens to receive resize notifications
+                self.callback_registry.handleResize(
+                    @as(*anyopaque, @ptrCast(self)),
+                    constrained_size.cols,
+                    constrained_size.rows
+                );
             }
 
             /// Start Unix resize monitoring (SIGWINCH)
