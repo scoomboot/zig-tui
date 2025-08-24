@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/fisty/code/zig-tui/.claude/scripts/track-edits.sh add"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/fisty/code/zig-tui/.claude/scripts/session-style-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

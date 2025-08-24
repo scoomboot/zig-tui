@@ -1,0 +1,2 @@
+echo "Analyze this session for any genuinely impactful issues or optimization opportunities. Document findings in the issue tracker at /home/fisty/code/zig-tui/issues..., ensuring each entry is well-supported with relevant links. Evaluate whether to update existing issues or create new ones—but avoid logging concerns that amount to over-engineering or speculative improvements. Focus only on changes that offer clear value or resolve real problems. ultrathink" >
+.claude/commands/fix-issue.md
