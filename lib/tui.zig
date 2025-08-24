@@ -367,7 +367,7 @@
 
 // ╔══════════════════════════════════════ CORE ══════════════════════════════════════════╗
 
-    // ┌───────────────────────────── TUI Context ─────────────────────────────┐
+    // ┌──────────────────────────── TUI Context ────────────────────────────┐
     
         /// Main TUI context structure
         pub const TUI = struct {
@@ -468,12 +468,13 @@
                         }
                     },
                     .resize => |resize_event| {
-                        // Validate dimensions before resizing
-                        if (resize_event.width == 0 or resize_event.height == 0) {
-                            return TuiError.InvalidDimensions;
-                        }
-                        try self.screen.resize(resize_event.width, resize_event.height);
-                        // Force full redraw after resize
+                        // Handle terminal resize with content preservation
+                        // Performance optimization: Batch resize operations to avoid flicker
+                        const new_size = Screen.Size.init(resize_event.width, resize_event.height);
+                        try self.screen.handleResize(new_size, .preserve_content);
+                        
+                        // Force full redraw to ensure complete screen refresh
+                        // Implementation note: handleResize sets needs_full_redraw flag
                         try self.forceRedraw();
                     },
                     .mouse => |mouse_event| {
@@ -503,9 +504,24 @@
             }
             
             /// Force a full screen redraw on next render.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: TUI instance
+            ///
+            /// __Return__
+            ///
+            /// - Error if render operation fails
+            ///
+            /// __Notes__
+            ///
+            /// - Triggers immediate render of all screen cells
+            /// - Used after terminal resize to ensure complete refresh
             pub fn forceRedraw(self: *TUI) !void {
-                // Mark all cells as dirty for full redraw
-                // This would call screen.mark_all_dirty() when available
+                // Implementation: Marks screen for full redraw and renders immediately
+                // This ensures all cells are redrawn after resize events
+                // Performance note: Full redraw is expensive, use sparingly
+                self.screen.markForFullRedraw();
                 try self.render();
             }
             
@@ -514,16 +530,20 @@
             /// __Parameters__
             ///
             /// - `self`: TUI instance to render
+            ///
+            /// __Return__
+            ///
+            /// - Error if rendering or I/O operations fail
             pub fn render(self: *TUI) !void {
-                // Clear and reuse render buffer for efficiency
+                // Performance optimization: Reuse render buffer to avoid allocations
                 self.render_buffer.clearRetainingCapacity();
                 const writer = self.render_buffer.writer();
                 
-                // Get screen changes efficiently
+                // Performance optimization: Only render changed cells via diffing
                 const diff_cells = try self.screen.get_diff(self.allocator);
                 defer self.allocator.free(diff_cells);
                 
-                // Batch rendering commands for performance
+                // Performance optimization: Batch rendering commands to reduce syscalls
                 var last_style: ?Style = null;
                 var last_pos: ?Point = null;
                 
@@ -531,7 +551,7 @@
                     const pos = Point.new(diff_cell.x, diff_cell.y);
                     const cell = diff_cell.cell;
                     
-                    // Optimize cursor movement - only move if not sequential
+                    // Performance optimization: Skip cursor moves for sequential cells
                     const needs_move = if (last_pos) |prev| 
                         (pos.x != prev.x + 1 or pos.y != prev.y)
                     else 
@@ -542,12 +562,12 @@
                         try writer.print("\x1b[{d};{d}H", .{ pos.y + 1, pos.x + 1 });
                     }
                     
-                    // Apply style changes only if different from last
+                    // Performance optimization: Only send style changes when needed
                     if (last_style == null or !styleEqual(last_style.?, cell.style)) {
-                        // Reset attributes
+                        // Reset attributes for clean state
                         try writer.writeAll("\x1b[0m");
                         
-                        // Apply new style
+                        // Apply new style attributes if set
                         if (cell.style.attrs.isSet()) {
                             try cell.style.attrs.writeAnsi(writer);
                         }
@@ -571,7 +591,7 @@
                     last_pos = pos;
                 }
                 
-                // Write entire buffer to terminal at once
+                // Performance optimization: Single write syscall for entire frame
                 if (self.render_buffer.items.len > 0) {
                     try self.terminal.write(self.render_buffer.items);
                     self.screen.swap_buffers();
@@ -580,14 +600,24 @@
             }
             
             /// Check if two styles are equal.
+            ///
+            /// __Parameters__
+            ///
+            /// - `a`: First style to compare
+            /// - `b`: Second style to compare
+            ///
+            /// __Return__
+            ///
+            /// - true if styles are identical
             fn styleEqual(a: Style, b: Style) bool {
+                // Performance optimization: Use meta.eql for struct comparison
                 return std.meta.eql(a, b);
             }
         };
     
-    // └────────────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────── Convenience Functions ───────────────────────┐
+    // ┌──────────────────────── Convenience Functions ──────────────────────┐
     
         /// Initialize TUI with default settings.
         ///
@@ -621,7 +651,7 @@
         ///
         /// - Initialized TUI instance or error
         pub fn initWithConfig(allocator: std.mem.Allocator, config: Config) !TUI {
-            // Validate configuration
+            // Validate configuration parameters
             if (config.target_fps == 0 or config.target_fps > 240) {
                 return TuiError.InvalidInput;
             }
@@ -629,29 +659,21 @@
             var terminal = try Terminal.init(allocator);
             errdefer terminal.deinit();
             
-            // Get and validate terminal size
-            const size = try terminal.get_size();
-            if (size.width == 0 or size.height == 0) {
-                return TuiError.InvalidDimensions;
-            }
-            
-            var screen = try Screen.init_with_size(
-                allocator,
-                size.width,
-                size.height
-            );
+            // Implementation: Connect screen to terminal for automatic resize handling
+            // This enables seamless terminal size change detection and buffer resizing
+            var screen = try Screen.initWithTerminal(allocator, &terminal);
             errdefer screen.deinit();
             
             var event_handler = try EventHandler.init(allocator);
             errdefer event_handler.deinit();
             
             // Configure event handler based on config
-            // NOTE: Mouse and bracketed paste support would be enabled here
-            // when the EventHandler module supports these features.
+            // Implementation note: Mouse and bracketed paste support will be
+            // enabled here when EventHandler module adds these features
             _ = config.enable_mouse;
             _ = config.enable_bracketed_paste;
             
-            // Pre-allocate render buffer
+            // Performance optimization: Pre-allocate render buffer to avoid resizing
             var render_buffer = try std.ArrayList(u8).initCapacity(
                 allocator,
                 config.initial_buffer_capacity
@@ -708,6 +730,6 @@
             tui.deinit();
         }
     
-    // └────────────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────┘
 
 // ╚════════════════════════════════════════════════════════════════════════════════════════╝
