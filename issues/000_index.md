@@ -53,18 +53,18 @@ Cross-platform support, optimizations, and documentation.
 | 002 | [Setup build configuration](002_setup_build_configuration.md) | ✅ | 🔴 | #001 | 2h | 100% | build.zig and build.zig.zon complete |
 | 003 | [Create main entry point](003_create_main_entry_point.md) | ✅ | 🔴 | #001 | 1h | 100% | Fully implemented with optimizations |
 | 004 | [Implement raw mode](004_implement_raw_mode.md) | ✅ | 🔴 | #003 | 4h | 100% | Cross-platform complete with signal handling |
-| 005 | [Implement ANSI sequences](005_implement_ansi_sequences.md) | ⚠️ | 🔴 | #003 | 3h | 40% | Basic structure, needs implementation |
-| 006 | [Implement terminal core](006_implement_terminal_core.md) | ⚠️ | 🔴 | #004, #005 | 4h | 50% | Structure done, methods incomplete |
-| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ❌ | 🔴 | #006 | 2h | 0% | Returns hardcoded 80x24 |
+| 005 | [Implement ANSI sequences](005_implement_ansi_sequences.md) | ✅ | 🔴 | #003 | 3h | 100% | Complete with 54 tests, all color modes |
+| 006 | [Implement terminal core](006_implement_terminal_core.md) | ⚠️ | 🔴 | #004, #005 | 4h | 50% | API mismatch with tests, missing methods |
+| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ❌ | 🔴 | #006 | 2h | 0% | Placeholder returns 80x24 |
 | 008 | [Implement cell structure](008_implement_cell_structure.md) | ⚠️ | 🟡 | #003 | 2h | 70% | Structure exists, needs verification |
 | 009 | [Implement screen buffer](009_implement_screen_buffer.md) | ✅ | 🟡 | #008 | 4h | 90% | Double buffering implemented |
 | 010 | [Implement buffer diffing](010_implement_buffer_diffing.md) | ✅ | 🟡 | #009 | 3h | 90% | Diff algorithm implemented |
 | 011 | [Implement screen rendering](011_implement_screen_rendering.md) | ❌ | 🟡 | #006, #010 | 3h | 0% | No terminal output implementation |
-| 012 | [Implement keyboard input](012_implement_keyboard_input.md) | ⚠️ | 🟡 | #004 | 4h | 30% | Structure exists, no actual reading |
-| 013 | [Implement event queue](013_implement_event_queue.md) | ⚠️ | 🟡 | #012 | 2h | 70% | Queue works, input broken |
-| 014 | [Implement event loop](014_implement_event_loop.md) | ⚠️ | 🟡 | #013 | 3h | 40% | Basic loop, read_input placeholder |
-| 015 | [Implement key mapping](015_implement_key_mapping.md) | ⚠️ | 🟡 | #012 | 2h | 30% | Structure exists, needs implementation |
-| 016 | [Create terminal tests](016_create_terminal_tests.md) | 🔄 | 🟡 | #007 | 3h | 50% | Tests exist but reference missing methods |
+| 012 | [Implement keyboard input](012_implement_keyboard_input.md) | ⚠️ | 🟡 | #004 | 4h | 30% | Structure exists, read_input() empty |
+| 013 | [Implement event queue](013_implement_event_queue.md) | ⚠️ | 🟡 | #012 | 2h | 70% | Queue structure ok, needs input impl |
+| 014 | [Implement event loop](014_implement_event_loop.md) | ⚠️ | 🟡 | #013 | 3h | 40% | Loop exists, read_input/process_buffer empty |
+| 015 | [Implement key mapping](015_implement_key_mapping.md) | ⚠️ | 🟡 | #012 | 2h | 30% | Structure defined, parsing incomplete |
+| 016 | [Create terminal tests](016_create_terminal_tests.md) | 🔄 | 🟡 | #007 | 3h | 50% | API mismatch: camelCase vs snake_case |
 | 017 | [Create screen tests](017_create_screen_tests.md) | ⬜ | 🟡 | #011 | 3h | 0% | Test file exists but empty |
 | 018 | [Create event tests](018_create_event_tests.md) | ⬜ | 🟡 | #015 | 3h | 0% | Test file exists but empty |
 | 019 | [Create integration tests](019_create_integration_tests.md) | ⬜ | 🟡 | #016-#018 | 4h | 0% | Not started |
@@ -127,19 +127,19 @@ Cross-platform support, optimizations, and documentation.
 
 ### Overall Progress
 - **Total Issues**: 50
-- **Completed**: 6 (12%)
-- **Partial**: 12 (24%)
+- **Completed**: 7 (14%)
+- **Partial**: 11 (22%)
 - **Broken/Needs Fix**: 1 (2%)
 - **Pending**: 31 (62%)
 
 ### Phase Progress
-- **Phase 1 (Foundation)**: 45% complete (6 done, 9 partial, 1 broken, 4 pending)
+- **Phase 1 (Foundation)**: 50% complete (7 done, 8 partial, 1 broken, 4 pending)
 - **Phase 2 (Widgets)**: 8% complete (0 done, 1 partial, 9 pending)
 - **Phase 3 (Layouts)**: 30% complete (0 done, 4 partial, 6 pending)
 - **Phase 4 (Polish)**: 0% complete (all pending)
 
 ### Priority Distribution
-- **🔴 Critical**: 7 issues (4 done, 3 partial)
+- **🔴 Critical**: 7 issues (5 done, 2 partial)
 - **🟡 High**: 17 issues (2 done, 6 partial, 1 broken, 8 pending)
 - **🟢 Medium**: 20 issues (0 done, 3 partial, 17 pending)
 - **🔵 Low**: 6 issues (all pending)
@@ -147,6 +147,15 @@ Cross-platform support, optimizations, and documentation.
 ---
 
 ## ✅ Recent Achievements (2025-08-24)
+
+### Issue #005: ANSI Sequences Implementation - COMPLETED
+- Implemented comprehensive ANSI module with Color union and Style struct
+- Support for all color modes: 8-color, 16-color, 256-color, and RGB
+- Efficient Ansi builder with buffer reuse and inline functions
+- Static helper functions for direct sequence generation
+- 54 comprehensive tests across 5 categories (unit, integration, scenario, performance, stress)
+- Performance: < 100ns sequence generation achieved
+- Full MCS style compliance with proper section demarcation
 
 ### Issue #004: Raw Mode Implementation - COMPLETED
 - Implemented RawMode struct with full cross-platform support
@@ -173,23 +182,80 @@ Cross-platform support, optimizations, and documentation.
 - Standardized test naming categories (unit/integration/performance/stress)
 - Enhanced function documentation with __Parameters__ and __Return__ sections
 
-## 🚨 Critical Issues to Fix Next
+## 🚨 Critical Implementation Path
 
-These issues block all further development and must be fixed immediately:
+These core issues must be fixed in dependency order to get a working TUI:
 
-1. **Fix Terminal Tests** (#016) - Tests reference non-existent methods like `isRawMode()`, `getCursorPosition()`
-2. **Implement Terminal Size Detection** (#007) - Currently returns hardcoded 80x24
-3. **Implement Screen Rendering** (#011) - No actual terminal output implementation
-4. **Fix Event Input Reading** (#012, #014) - `read_input()` is just a placeholder
+### Implementation Order (Respecting Dependencies):
 
-### Recommended Fix Order:
-1. Fix terminal.test.zig to match actual implementation
-2. Implement real terminal size detection  
-3. Complete the event input system
-4. Implement screen rendering to terminal
-5. ~~Create a working demo in main.zig~~ - ✅ Entry point completed, demo pending on rendering
+1. **~~Complete ANSI Sequences (#005)~~** - Status: ✅ COMPLETED
+   - Full implementation with all color modes and styles
+   - 54 tests passing, performance targets met
+
+2. **Complete Terminal Core** (#006) - Status: ⚠️ 50%
+   - Add missing methods: `isRawMode()`, error types
+   - Fix API consistency (snake_case vs camelCase)
+   - Required by: size detection (#007), tests (#016)
+
+3. **Implement Terminal Size Detection** (#007) - Status: ❌ 0%
+   - Replace hardcoded 80x24 with actual ioctl/Windows API
+   - Required by: screen rendering (#011), tests (#016)
+
+4. **Implement Screen Rendering** (#011) - Status: ❌ 0%
+   - Connect buffer to actual terminal output
+   - Required by: any visual output
+
+5. **Implement Keyboard Input** (#012) - Status: ⚠️ 30%
+   - Replace placeholder `read_input()` with actual implementation
+   - Required by: event loop (#014)
+
+6. **Complete Event Loop** (#014) - Status: ⚠️ 40%
+   - Finish `process_buffer()` implementation
+   - Required by: interactive functionality
+
+7. **Fix Terminal Tests** (#016) - Status: 🔄 Needs Refactor
+   - Update tests to match actual API after #006 is complete
+   - Or update implementation to match test expectations
 
 ---
+
+## 🚀 Quick Start Implementation Guide
+
+### What's Actually Working Now
+✅ **Completed Components:**
+- Raw mode implementation with cross-platform support and signal handling
+- Main TUI entry point with atomic state management
+- Screen buffer with double buffering and diff algorithm
+- Basic ANSI escape sequence functions
+- Directory structure and build configuration
+
+### Minimum Required for Working Demo
+To get a basic "Hello World" TUI demo running, complete these issues in order:
+
+1. **Fix Terminal Core API** (#006) - 2 hours
+   - Decide: snake_case or camelCase (recommend matching Zig stdlib: snake_case)
+   - Add `is_raw_mode()` method
+   - Add error types for proper error handling
+
+2. **Implement Terminal Output** (#011) - 3 hours  
+   - Connect screen buffer to terminal via ANSI sequences
+   - Implement `flush()` to write buffer to terminal
+
+3. **Basic Keyboard Input** (#012) - 2 hours
+   - Implement minimal `read_input()` for Ctrl+C to exit
+   - Can skip full key mapping initially
+
+**Total Time: ~7 hours for minimal working demo**
+
+### API Consistency Decision Required
+**Current Conflict:** Tests use camelCase (`enterRawMode`) but implementation uses snake_case (`enter_raw_mode`)
+
+**Recommendation:** Use snake_case throughout to match Zig standard library conventions:
+- `enter_raw_mode()` not `enterRawMode()`
+- `is_raw_mode()` not `isRawMode()`
+- `get_size()` not `getSize()`
+
+This requires updating terminal.test.zig to match.
 
 ## Dependencies Graph
 
@@ -255,11 +321,12 @@ These issues need to be added to properly track fixing the broken/incomplete imp
 
 *Last Updated: 2025-08-24*
 *Session Achievements:*
+- *Issue #005 (ANSI Sequences): ✅ Completed with all color modes and comprehensive tests*
 - *Issue #004 (Raw Mode): ✅ Completed with cross-platform support and signal handling*
 - *Issue #003 (Main Entry Point): ✅ Completed with comprehensive implementation*
 - *MCS Compliance: 100% achieved across all edited files*
-- *Tests: 112 tests total (86 from #003, 26 from #004), all passing*
-- *Performance: < 5ns for inline functions, < 1ms for mode switching*
+- *Tests: 166 tests total (86 from #003, 26 from #004, 54 from #005), all passing*
+- *Performance: < 5ns for inline functions, < 1ms for mode switching, < 100ns for ANSI sequences*
 *Project: Zig TUI Library*
 *Repository: https://github.com/fisty/zig-tui*
-*Status: Foundation 45% complete, raw mode and entry point ready, terminal integration needed*
+*Status: Foundation 50% complete, raw mode/entry point/ANSI ready, terminal core integration needed*

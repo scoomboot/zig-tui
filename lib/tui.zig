@@ -30,6 +30,9 @@
     pub const Cell = @import("screen/utils/cell/cell.zig").Cell;
     pub const Rect = @import("screen/utils/rect/rect.zig").Rect;
     
+    // Terminal utilities
+    pub const ansi = @import("terminal/utils/ansi/ansi.zig");
+    
     // Layout and widget modules (future expansion)
     pub const Widget = @import("widget/widget.zig").Widget;
     pub const Layout = @import("layout/layout.zig").Layout;
