@@ -54,8 +54,8 @@ Cross-platform support, optimizations, and documentation.
 | 003 | [Create main entry point](003_create_main_entry_point.md) | ✅ | 🔴 | #001 | 1h | 100% | Fully implemented with optimizations |
 | 004 | [Implement raw mode](004_implement_raw_mode.md) | ✅ | 🔴 | #003 | 4h | 100% | Cross-platform complete with signal handling |
 | 005 | [Implement ANSI sequences](005_implement_ansi_sequences.md) | ✅ | 🔴 | #003 | 3h | 100% | Complete with 54 tests, all color modes |
-| 006 | [Implement terminal core](006_implement_terminal_core.md) | ⚠️ | 🔴 | #004, #005 | 4h | 50% | API mismatch with tests, missing methods |
-| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ❌ | 🔴 | #006 | 2h | 0% | Placeholder returns 80x24 |
+| 006 | [Implement terminal core](006_implement_terminal_core.md) | ✅ | 🔴 | #004, #005 | 4h | 100% | Complete with new RawMode API integration |
+| 007 | [Add terminal size detection](007_add_terminal_size_detection.md) | ⚠️ | 🔴 | #006 | 2h | 30% | Basic ioctl detection, needs resize events |
 | 008 | [Implement cell structure](008_implement_cell_structure.md) | ⚠️ | 🟡 | #003 | 2h | 70% | Structure exists, needs verification |
 | 009 | [Implement screen buffer](009_implement_screen_buffer.md) | ✅ | 🟡 | #008 | 4h | 90% | Double buffering implemented |
 | 010 | [Implement buffer diffing](010_implement_buffer_diffing.md) | ✅ | 🟡 | #009 | 3h | 90% | Diff algorithm implemented |
@@ -64,7 +64,7 @@ Cross-platform support, optimizations, and documentation.
 | 013 | [Implement event queue](013_implement_event_queue.md) | ⚠️ | 🟡 | #012 | 2h | 70% | Queue structure ok, needs input impl |
 | 014 | [Implement event loop](014_implement_event_loop.md) | ⚠️ | 🟡 | #013 | 3h | 40% | Loop exists, read_input/process_buffer empty |
 | 015 | [Implement key mapping](015_implement_key_mapping.md) | ⚠️ | 🟡 | #012 | 2h | 30% | Structure defined, parsing incomplete |
-| 016 | [Create terminal tests](016_create_terminal_tests.md) | 🔄 | 🟡 | #007 | 3h | 50% | API mismatch: camelCase vs snake_case |
+| 016 | [Create terminal tests](016_create_terminal_tests.md) | ✅ | 🟡 | #007 | 3h | 100% | Complete with 21 tests, backward compatibility |
 | 017 | [Create screen tests](017_create_screen_tests.md) | ⬜ | 🟡 | #011 | 3h | 0% | Test file exists but empty |
 | 018 | [Create event tests](018_create_event_tests.md) | ⬜ | 🟡 | #015 | 3h | 0% | Test file exists but empty |
 | 019 | [Create integration tests](019_create_integration_tests.md) | ⬜ | 🟡 | #016-#018 | 4h | 0% | Not started |
@@ -123,30 +123,53 @@ Cross-platform support, optimizations, and documentation.
 
 ---
 
+## Additional Issues
+
+| # | Issue | Status | Priority | Dependencies | Est. Time | Completion | Notes |
+|---|-------|--------|----------|--------------|-----------|------------|-------|
+| 051 | [Clean test output](051_clean_test_output.md) | ⬜ | 🔵 | #016 | 2h | 0% | Prevent ANSI sequences in test output |
+
+---
+
 ## Progress Metrics
 
 ### Overall Progress
-- **Total Issues**: 50
-- **Completed**: 7 (14%)
-- **Partial**: 11 (22%)
+- **Total Issues**: 51 (including new Issue #051)
+- **Completed**: 9 (18%)
+- **Partial**: 10 (20%)
 - **Broken/Needs Fix**: 1 (2%)
-- **Pending**: 31 (62%)
+- **Pending**: 31 (60%)
 
 ### Phase Progress
-- **Phase 1 (Foundation)**: 50% complete (7 done, 8 partial, 1 broken, 4 pending)
+- **Phase 1 (Foundation)**: 60% complete (9 done, 7 partial, 1 broken, 3 pending)
 - **Phase 2 (Widgets)**: 8% complete (0 done, 1 partial, 9 pending)
 - **Phase 3 (Layouts)**: 30% complete (0 done, 4 partial, 6 pending)
 - **Phase 4 (Polish)**: 0% complete (all pending)
+- **Additional Issues**: 1 pending (Issue #051)
 
 ### Priority Distribution
-- **🔴 Critical**: 7 issues (5 done, 2 partial)
-- **🟡 High**: 17 issues (2 done, 6 partial, 1 broken, 8 pending)
+- **🔴 Critical**: 7 issues (6 done, 1 partial)
+- **🟡 High**: 17 issues (3 done, 5 partial, 1 broken, 8 pending)
 - **🟢 Medium**: 20 issues (0 done, 3 partial, 17 pending)
-- **🔵 Low**: 6 issues (all pending)
+- **🔵 Low**: 7 issues (all pending)
 
 ---
 
 ## ✅ Recent Achievements (2025-08-24)
+
+### Issue #006: Terminal Core Implementation - COMPLETED
+- Successfully integrated new RawMode struct API
+- Implemented complete terminal operations (TTY detection, mode control, cursor, screen)
+- Added test environment support with `@import("builtin").is_test` checks
+- Maintained backward compatibility with old snake_case API
+- Terminal size detection using ioctl on Linux
+- 21 comprehensive tests all passing
+- Full MCS style compliance with proper section organization
+
+### Issue #016: Terminal Tests - COMPLETED
+- Implemented all test categories (unit, integration, e2e, performance, stress)
+- Added backward compatibility tests
+- All 21 tests passing successfully
 
 ### Issue #005: ANSI Sequences Implementation - COMPLETED
 - Implemented comprehensive ANSI module with Color union and Style struct

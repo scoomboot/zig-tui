@@ -268,3 +268,16 @@ Enhance the terminal module with comprehensive size detection capabilities, incl
 
 ## Category
 Terminal Core
+
+## Implementation Status (2025-08-24)
+⚠️ **PARTIAL**: Basic terminal size detection has been implemented in `terminal.zig`:
+- ✅ `querySize()` function using `ioctl` with `TIOCGWINSZ` on Linux
+- ✅ Fallback to 24x80 for test environments or non-TTY
+- ✅ Size caching in Terminal struct
+- ❌ SIGWINCH signal handler not implemented
+- ❌ Resize event callbacks not implemented
+- ❌ Windows console resize detection not implemented
+- ❌ ANSI escape sequence query method not implemented
+- ❌ Environment variable fallback not implemented
+
+The basic functionality is working but advanced resize handling features are still needed.

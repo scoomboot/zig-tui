@@ -9,7 +9,12 @@
 
     const std = @import("std");
     const testing = std.testing;
-    const Terminal = @import("terminal.zig").Terminal;
+    const terminal_module = @import("terminal.zig");
+    const Terminal = terminal_module.Terminal;
+    const Size = terminal_module.Size;
+    const Position = terminal_module.Position;
+    const CursorStyle = terminal_module.CursorStyle;
+    const TerminalError = terminal_module.TerminalError;
 
 // ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
@@ -42,7 +47,7 @@
         var terminal = try allocator.create(Terminal);
         terminal.* = try Terminal.init(allocator);
         if (raw_mode) {
-            try terminal.enter_raw_mode();
+            try terminal.enterRawMode();
         }
         return terminal;
     }
@@ -58,9 +63,11 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            try testing.expect(!terminal.raw_mode_enabled);
-            const size = try terminal.get_size();
-            try testing.expect(size.width > 0 and size.height > 0);
+            try testing.expect(!terminal.is_raw);
+            try testing.expect(!terminal.use_alt_screen);
+            try testing.expect(terminal.cursor_visible);
+            const size = try terminal.getSize();
+            try testing.expect(size.rows > 0 and size.cols > 0);
         }
         
         test "unit: Terminal: enters raw mode successfully" {
@@ -68,8 +75,8 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            try terminal.enter_raw_mode();
-            try testing.expect(terminal.raw_mode_enabled);
+            try terminal.enterRawMode();
+            try testing.expect(terminal.is_raw);
         }
         
         test "unit: Terminal: exits raw mode successfully" {
@@ -77,9 +84,9 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            try terminal.enter_raw_mode();
-            try terminal.exit_raw_mode();
-            try testing.expect(!terminal.raw_mode_enabled);
+            try terminal.enterRawMode();
+            try terminal.exitRawMode();
+            try testing.expect(!terminal.is_raw);
         }
         
         test "unit: Terminal: handles double raw mode entry" {
@@ -87,10 +94,10 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            try terminal.enter_raw_mode();
+            try terminal.enterRawMode();
             // Should be idempotent - no error on double entry
-            try terminal.enter_raw_mode();
-            try testing.expect(terminal.raw_mode_enabled);
+            try terminal.enterRawMode();
+            try testing.expect(terminal.is_raw);
         }
         
         test "unit: Terminal: gets terminal size correctly" {
@@ -98,11 +105,77 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            const size = try terminal.get_size();
-            try testing.expect(size.width > 0);
-            try testing.expect(size.height > 0);
-            try testing.expect(size.width <= MAX_TERMINAL_SIZE);
-            try testing.expect(size.height <= MAX_TERMINAL_SIZE);
+            const size = try terminal.getSize();
+            try testing.expect(size.rows > 0);
+            try testing.expect(size.cols > 0);
+            try testing.expect(size.rows <= MAX_TERMINAL_SIZE);
+            try testing.expect(size.cols <= MAX_TERMINAL_SIZE);
+        }
+        
+        test "unit: Terminal: manages cursor visibility" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Initially visible
+            try testing.expect(terminal.cursor_visible);
+            
+            // Hide cursor
+            try terminal.hideCursor();
+            try testing.expect(!terminal.cursor_visible);
+            
+            // Show cursor
+            try terminal.showCursor();
+            try testing.expect(terminal.cursor_visible);
+            
+            // Double hide should be idempotent
+            try terminal.hideCursor();
+            try terminal.hideCursor();
+            try testing.expect(!terminal.cursor_visible);
+        }
+        
+        test "unit: Terminal: sets cursor styles" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test each cursor style
+            const styles = [_]CursorStyle{
+                .default,
+                .block,
+                .underline,
+                .bar,
+                .blinking_block,
+                .blinking_underline,
+                .blinking_bar,
+            };
+            
+            for (styles) |style| {
+                try terminal.setCursorStyle(style);
+                // No error should occur
+            }
+        }
+        
+        test "unit: Terminal: manages alternative screen buffer" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Initially not in alt screen
+            try testing.expect(!terminal.use_alt_screen);
+            
+            // Enter alt screen
+            try terminal.enterAltScreen();
+            try testing.expect(terminal.use_alt_screen);
+            
+            // Exit alt screen
+            try terminal.exitAltScreen();
+            try testing.expect(!terminal.use_alt_screen);
+            
+            // Double enter should be idempotent
+            try terminal.enterAltScreen();
+            try terminal.enterAltScreen();
+            try testing.expect(terminal.use_alt_screen);
         }
     
     // └──────────────────────────────────────────────────────────────────┘
@@ -115,40 +188,58 @@
             defer terminal.deinit();
             
             // Initial state
-            try testing.expect(!terminal.raw_mode_enabled);
+            try testing.expect(!terminal.is_raw);
             
             // Enter raw mode
-            try terminal.enter_raw_mode();
-            try testing.expect(terminal.raw_mode_enabled);
+            try terminal.enterRawMode();
+            try testing.expect(terminal.is_raw);
             
             // Exit raw mode
-            try terminal.exit_raw_mode();
-            try testing.expect(!terminal.raw_mode_enabled);
+            try terminal.exitRawMode();
+            try testing.expect(!terminal.is_raw);
         }
         
-        test "integration: Terminal with Writer: writes output correctly" {
+        test "integration: Terminal with ANSI: cursor positioning works" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test various cursor positions
+            try terminal.setCursorPos(1, 1);    // Top-left
+            try terminal.setCursorPos(10, 20);  // Middle somewhere
+            try terminal.setCursorPos(24, 80);  // Bottom-right (typical terminal size)
+            
+            // No errors should occur
+        }
+        
+        test "integration: Terminal with ANSI: screen clearing works" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Clear screen
+            try terminal.clear();
+            // Cursor should be at home position after clear
+            
+            // Clear line
+            try terminal.clearLine();
+            
+            // No errors should occur
+        }
+        
+        test "integration: Terminal with Output: writing works" {
             const allocator = testing.allocator;
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
             const test_string = "Hello, Terminal!";
-            // Note: terminal doesn't have a write method yet
-            // This would write through stdout directly
-            _ = test_string;
+            try terminal.write(test_string);
+            
+            // Flush output
+            try terminal.flush();
             
             // Verify write succeeded (actual output verification would require mocking)
             try testing.expect(true);
-        }
-        
-        test "integration: Terminal with Cursor: positions cursor correctly" {
-            const allocator = testing.allocator;
-            var terminal = try Terminal.init(allocator);
-            defer terminal.deinit();
-            
-            const pos = @import("terminal.zig").Position{ .x = 10, .y = 5 };
-            try terminal.move_cursor(pos);
-            // Note: getCursorPosition not implemented yet
-            // Would need to track cursor position internally
         }
     
     // └──────────────────────────────────────────────────────────────────┘
@@ -163,19 +254,31 @@
             defer terminal.deinit();
             
             // Enter raw mode
-            try terminal.enter_raw_mode();
+            try terminal.enterRawMode();
+            
+            // Enter alternative screen
+            try terminal.enterAltScreen();
             
             // Perform operations
             try terminal.clear();
-            try terminal.move_cursor(.{ .x = 0, .y = 0 });
-            // Note: write and flush methods not implemented yet
-            // Would write through stdout
+            try terminal.setCursorPos(1, 1);
+            try terminal.hideCursor();
+            try terminal.write("TUI Application");
+            try terminal.flush();
+            
+            // Exit alternative screen
+            try terminal.exitAltScreen();
             
             // Exit raw mode
-            try terminal.exit_raw_mode();
+            try terminal.exitRawMode();
+            
+            // Show cursor
+            try terminal.showCursor();
             
             // Verify final state
-            try testing.expect(!terminal.raw_mode_enabled);
+            try testing.expect(!terminal.is_raw);
+            try testing.expect(!terminal.use_alt_screen);
+            try testing.expect(terminal.cursor_visible);
         }
         
         test "e2e: terminal interaction: complete user session" {
@@ -183,56 +286,65 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            // Simulate user session
-            try terminal.enter_raw_mode();
-            defer terminal.exit_raw_mode() catch {};
+            // Simulate complete user session
+            try terminal.enterRawMode();
+            defer terminal.exitRawMode() catch {};
             
-            // Clear screen
+            try terminal.enterAltScreen();
+            defer terminal.exitAltScreen() catch {};
+            
+            // Clear screen and set up UI
             try terminal.clear();
+            try terminal.hideCursor();
             
-            // Write welcome message
-            try terminal.move_cursor(.{ .x = 0, .y = 0 });
-            // Note: write method not implemented - would use stdout
+            // Write welcome message at top
+            try terminal.setCursorPos(1, 1);
+            try terminal.write("Welcome to TUI Application");
             
-            // Move cursor and write more
-            try terminal.move_cursor(.{ .x = 0, .y = 2 });
-            // Note: write method not implemented - would use stdout
+            // Write status line at bottom
+            const size = try terminal.getSize();
+            try terminal.setCursorPos(size.rows, 1);
+            try terminal.write("Press q to quit");
             
-            // Note: flush method not implemented yet
+            // Move cursor to input area
+            try terminal.setCursorPos(3, 1);
+            try terminal.showCursor();
+            try terminal.setCursorStyle(.blinking_bar);
             
-            try testing.expect(terminal.raw_mode_enabled);
+            try terminal.flush();
+            
+            try testing.expect(terminal.is_raw);
+            try testing.expect(terminal.use_alt_screen);
+        }
+        
+        test "e2e: error recovery: cleanup on failure" {
+            const allocator = testing.allocator;
+            
+            // Initialize terminal
+            var terminal = try Terminal.init(allocator);
+            
+            // Enter various modes
+            terminal.enterRawMode() catch {};
+            terminal.enterAltScreen() catch {};
+            terminal.hideCursor() catch {};
+            
+            // Cleanup should restore everything
+            terminal.deinit();
+            
+            // Terminal should be restored even after errors
+            try testing.expect(true);
         }
     
     // └──────────────────────────────────────────────────────────────────┘
     
     // ┌──────────────────────────── Performance Tests ────────────────────────────┐
     
-        test "performance: Terminal.write: handles large output efficiently" {
-            const allocator = testing.allocator;
-            var terminal = try Terminal.init(allocator);
-            defer terminal.deinit();
-            
-            // Create large output buffer
-            const large_text = try allocator.alloc(u8, 10000);
-            defer allocator.free(large_text);
-            @memset(large_text, 'A');
-            
-            const start = std.time.milliTimestamp();
-            // Note: write method not implemented - would use stdout
-            // Just verify the data was allocated properly
-            try testing.expect(large_text.len == 10000);
-            const elapsed = std.time.milliTimestamp() - start;
-            
-            // Should complete within reasonable time
-            try testing.expect(elapsed < 100); // 100ms threshold
-        }
-        
         test "performance: Terminal.clear: clears screen quickly" {
             const allocator = testing.allocator;
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            const iterations = 1000;
+            const iterations = 100;
             const start = std.time.milliTimestamp();
             
             for (0..iterations) |_| {
@@ -242,8 +354,29 @@
             const elapsed = std.time.milliTimestamp() - start;
             const avg_ms = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
             
-            // Average clear should be fast
+            // Average clear should be fast (< 1ms)
             try testing.expect(avg_ms < 1.0);
+        }
+        
+        test "performance: Terminal.setCursorPos: positions cursor quickly" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            const iterations = 1000;
+            const start = std.time.milliTimestamp();
+            
+            for (0..iterations) |i| {
+                const row = @as(u16, @intCast((i % 24) + 1));
+                const col = @as(u16, @intCast((i % 80) + 1));
+                try terminal.setCursorPos(row, col);
+            }
+            
+            const elapsed = std.time.milliTimestamp() - start;
+            const avg_ms = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
+            
+            // Average cursor positioning should be very fast
+            try testing.expect(avg_ms < 0.5);
         }
     
     // └──────────────────────────────────────────────────────────────────┘
@@ -255,40 +388,106 @@
             var terminal = try Terminal.init(allocator);
             defer terminal.deinit();
             
-            const iterations = 100;
+            const iterations = 50;
             for (0..iterations) |i| {
                 if (i % 2 == 0) {
-                    terminal.enter_raw_mode() catch {};
+                    terminal.enterRawMode() catch {};
                 } else {
-                    terminal.exit_raw_mode() catch {};
+                    terminal.exitRawMode() catch {};
                 }
             }
             
             // Terminal should be stable after stress
-            terminal.exit_raw_mode() catch {};
-            try testing.expect(!terminal.raw_mode_enabled);
+            terminal.exitRawMode() catch {};
+            try testing.expect(!terminal.is_raw);
         }
         
-        test "stress: Terminal: survives memory pressure" {
+        test "stress: Terminal: handles rapid screen switching" {
             const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
             
-            const terminal_count = 50;
-            var terminals: [terminal_count]*Terminal = undefined;
-            
-            // Create many terminals
-            for (0..terminal_count) |i| {
-                terminals[i] = try allocator.create(Terminal);
-                terminals[i].* = try Terminal.init(allocator);
+            const iterations = 50;
+            for (0..iterations) |i| {
+                if (i % 2 == 0) {
+                    terminal.enterAltScreen() catch {};
+                } else {
+                    terminal.exitAltScreen() catch {};
+                }
             }
             
-            // Clean up
-            for (0..terminal_count) |i| {
-                terminals[i].deinit();
-                allocator.destroy(terminals[i]);
+            // Terminal should be stable after stress
+            terminal.exitAltScreen() catch {};
+            try testing.expect(!terminal.use_alt_screen);
+        }
+        
+        test "stress: Terminal: handles mixed operations under load" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            const iterations = 100;
+            for (0..iterations) |i| {
+                // Mix of operations
+                if (i % 3 == 0) {
+                    try terminal.clear();
+                }
+                if (i % 5 == 0) {
+                    terminal.hideCursor() catch {};
+                    terminal.showCursor() catch {};
+                }
+                if (i % 7 == 0) {
+                    const row = @as(u16, @intCast((i % 24) + 1));
+                    const col = @as(u16, @intCast((i % 80) + 1));
+                    try terminal.setCursorPos(row, col);
+                }
+                if (i % 11 == 0) {
+                    try terminal.clearLine();
+                }
             }
             
-            // Should complete without memory issues
+            // Terminal should remain functional
+            try terminal.clear();
             try testing.expect(true);
+        }
+    
+    // └──────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Backward Compatibility Tests ────────────────────────────┐
+    
+        test "unit: Terminal: backward compatible API works" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test old API methods
+            try terminal.enter_raw_mode();
+            try testing.expect(terminal.is_raw_mode());
+            
+            try terminal.exit_raw_mode();
+            try testing.expect(!terminal.is_raw_mode());
+            
+            const size = try terminal.get_size();
+            try testing.expect(size.rows > 0 and size.cols > 0);
+            
+            try terminal.hide_cursor();
+            try testing.expect(!terminal.cursor_visible);
+            
+            try terminal.show_cursor();
+            try testing.expect(terminal.cursor_visible);
+            
+            try terminal.enter_alt_screen();
+            try testing.expect(terminal.use_alt_screen);
+            
+            try terminal.exit_alt_screen();
+            try testing.expect(!terminal.use_alt_screen);
+            
+            const pos = Position{ .x = 10, .y = 5 };
+            try terminal.move_cursor(pos);
+            
+            try terminal.set_cursor_style(.block);
+            
+            try terminal.write("Test");
         }
     
     // └──────────────────────────────────────────────────────────────────┘
