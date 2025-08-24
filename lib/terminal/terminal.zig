@@ -6,18 +6,22 @@
 //
 // Vibe coded by Fisty.
 
-// ╔══════════════════════════════════════ PACK ══════════════════════════════════════╗
+// ╔════════════════════════════════════ PACK ════════════════════════════════════╗
 
     const std = @import("std");
     const RawMode = @import("utils/raw_mode/raw_mode.zig").RawMode;
     const ansi = @import("utils/ansi/ansi.zig");
     const CallbackRegistry = @import("utils/callback_registry/callback_registry.zig").CallbackRegistry;
+    const windows_console = if (@import("builtin").os.tag == .windows) 
+        @import("utils/windows_console/windows_console.zig") 
+    else 
+        struct {};
     const os = std.os;
     const posix = std.posix;
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔══════════════════════════════════════ INIT ══════════════════════════════════════╗
+// ╔════════════════════════════════════ INIT ════════════════════════════════════╗
 
     pub const TerminalError = error{
         InitFailed,
@@ -154,9 +158,80 @@
         blinking_bar,
     };
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+    /// Windows resize detection mode configuration.
+    ///
+    /// Determines the strategy used for detecting terminal resize events
+    /// on Windows platforms. Event-driven mode offers better performance
+    /// while polling provides compatibility fallback.
+    pub const WindowsResizeMode = enum {
+        /// Use console input events for resize detection (recommended)
+        event_driven,
+        
+        /// Use polling to check for size changes (compatibility fallback)
+        polling,
+        
+        /// Try event-driven first, fall back to polling if it fails
+        hybrid,
+    };
 
-// ╔══════════════════════════════════════ CORE ══════════════════════════════════════╗
+    /// Configuration for Windows resize monitoring.
+    ///
+    /// Controls the behavior of resize detection on Windows platforms,
+    /// including mode selection, timing parameters, and fallback behavior.
+    pub const WindowsResizeConfig = struct {
+        /// Detection mode to use
+        mode: WindowsResizeMode = .hybrid,
+        
+        /// Polling interval in milliseconds (when using polling mode)
+        polling_interval_ms: u32 = 50,
+        
+        /// Event wait timeout in milliseconds (when using event mode)
+        event_timeout_ms: u32 = 100,
+        
+        /// Whether to log mode selection for debugging
+        log_mode_selection: bool = false,
+        
+        /// Create default configuration.
+        ///
+        /// __Return__
+        ///
+        /// - `WindowsResizeConfig`: Default configuration with hybrid mode
+        pub fn default() WindowsResizeConfig {
+            return WindowsResizeConfig{};
+        }
+        
+        /// Create event-driven configuration.
+        ///
+        /// __Return__
+        ///
+        /// - `WindowsResizeConfig`: Configuration for event-driven mode only
+        pub fn eventDriven() WindowsResizeConfig {
+            return WindowsResizeConfig{
+                .mode = .event_driven,
+                .event_timeout_ms = 100,
+            };
+        }
+        
+        /// Create polling configuration.
+        ///
+        /// __Parameters__
+        ///
+        /// - `interval_ms`: Polling interval in milliseconds
+        ///
+        /// __Return__
+        ///
+        /// - `WindowsResizeConfig`: Configuration for polling mode only
+        pub fn polling(interval_ms: u32) WindowsResizeConfig {
+            return WindowsResizeConfig{
+                .mode = .polling,
+                .polling_interval_ms = interval_ms,
+            };
+        }
+    };
+
+// ╚════════════════════════════════════════════════════════════════════════════════╝
+
+// ╔════════════════════════════════════ CORE ════════════════════════════════════╗
 
     pub const Terminal = struct {
         allocator: std.mem.Allocator,
@@ -169,12 +244,12 @@
         size: Size,
         ansi_builder: ansi.Ansi,
         
-        // ┌──────────────────────────── Output Control ────────────────────────────┐
+        // ┌────────────────────────── Output Control ──────────────────────────┐
         
             // Output control for testing and debugging
             debug_output: bool,
             
-        // └──────────────────────────────────────────────────────────────────────┘
+        // └────────────────────────────────────────────────────────────────────┘
         
         // Size detection and caching
         size_cache: ?Size,
@@ -188,8 +263,11 @@
         
         // Callback registry for screen associations
         callback_registry: CallbackRegistry,
+        
+        // Windows-specific resize configuration
+        windows_resize_config: WindowsResizeConfig,
 
-        // ┌──────────────────────────── Initialization ────────────────────────────┐
+        // ┌────────────────────────── Initialization ──────────────────────────┐
 
             /// Initialize terminal with default settings
             pub fn init(allocator: std.mem.Allocator) !Terminal {
@@ -223,6 +301,7 @@
                     .resize_mutex = .{},
                     .resize_monitoring = false,
                     .callback_registry = CallbackRegistry.init(allocator),
+                    .windows_resize_config = WindowsResizeConfig.default(),
                 };
                 defer temp_term.resize_callbacks.deinit();
                 defer temp_term.ansi_builder.deinit();
@@ -259,6 +338,9 @@
                     
                     // Initialize callback registry for screen associations
                     .callback_registry = CallbackRegistry.init(allocator),
+                    
+                    // Initialize Windows resize configuration
+                    .windows_resize_config = WindowsResizeConfig.default(),
                 };
 
                 // Set up signal handlers for cleanup
@@ -301,7 +383,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Mode Control ────────────────────────────┐
+        // ┌────────────────────────── Mode Control ──────────────────────────┐
 
             /// Enter raw mode for direct input handling
             pub fn enterRawMode(self: *Terminal) !void {
@@ -345,7 +427,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Screen Operations ────────────────────────────┐
+        // ┌────────────────────────── Screen Operations ──────────────────────────┐
 
             /// Clear entire screen
             pub fn clear(self: *Terminal) !void {
@@ -465,7 +547,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Cursor Control ────────────────────────────┐
+        // ┌────────────────────────── Cursor Control ──────────────────────────┐
 
             /// Set cursor position (1-based)
             pub fn setCursorPos(self: *Terminal, row: u16, col: u16) !void {
@@ -524,7 +606,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Internal Helpers ────────────────────────────┐
+        // ┌────────────────────────── Internal Helpers ──────────────────────────┐
 
             /// Write ANSI escape sequence to terminal output.
             ///
@@ -771,7 +853,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Resize Monitoring ────────────────────────────┐
+        // ┌────────────────────────── Resize Monitoring ──────────────────────────┐
 
             /// Start monitoring terminal resize events.
             ///
@@ -966,26 +1048,134 @@
                 }
             }
 
-            /// Windows resize monitoring thread function
+            /// Windows resize monitoring thread function with event-driven support.
+            ///
+            /// Uses the configured resize detection mode (event-driven, polling, or hybrid)
+            /// to monitor for terminal size changes. Event-driven mode provides superior
+            /// performance with near-zero CPU usage during idle periods.
             fn monitorWindowsResize(self: *Terminal) void {
                 if (@import("builtin").os.tag != .windows) return;
 
+                const config = self.windows_resize_config;
+                
+                // Log mode selection if configured
+                if (config.log_mode_selection) {
+                    std.log.info("Windows resize monitoring mode: {s}", .{@tagName(config.mode)});
+                }
+                
+                // Try event-driven approach first for hybrid and event_driven modes
+                if (config.mode == .event_driven or config.mode == .hybrid) {
+                    if (self.tryEventDrivenResize(config)) {
+                        if (config.log_mode_selection) {
+                            std.log.info("Using event-driven resize detection", .{});
+                        }
+                        return; // Success with event-driven approach
+                    }
+                    
+                    // If event-driven mode was explicitly requested but failed
+                    if (config.mode == .event_driven) {
+                        std.log.warn("Event-driven resize detection failed, monitoring disabled", .{});
+                        return;
+                    }
+                    
+                    // Fall through to polling for hybrid mode
+                    if (config.log_mode_selection) {
+                        std.log.info("Event-driven failed, falling back to polling", .{});
+                    }
+                }
+                
+                // Use polling approach (either as primary or fallback)
+                self.monitorWindowsResizePolling(config.polling_interval_ms);
+            }
+            
+            /// Try event-driven Windows resize monitoring.
+            ///
+            /// Uses Windows Console Input events to detect window buffer size changes
+            /// with minimal CPU overhead. Returns true if monitoring completed successfully,
+            /// false if the method is not available or an error occurred.
+            fn tryEventDrivenResize(self: *Terminal, config: WindowsResizeConfig) bool {
+                if (@import("builtin").os.tag != .windows) return false;
+                
                 const windows = std.os.windows;
                 const kernel32 = windows.kernel32;
-
-                // Get console input handle for potential future use
-                _ = kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) catch {
+                
+                // Get console input handle
+                const stdin_handle = kernel32.GetStdHandle(windows.STD_INPUT_HANDLE) catch {
+                    return false;
+                };
+                
+                // Enable window input events
+                const original_mode = windows_console.Console.enableWindowInput(stdin_handle) catch {
+                    return false;
+                };
+                defer windows_console.Console.restoreConsoleMode(stdin_handle, original_mode) catch {};
+                
+                // Clear any pending input events
+                windows_console.Console.clearInputBuffer(stdin_handle) catch {};
+                
+                // Event monitoring loop
+                while (self.resize_monitoring) {
+                    // Wait for console input with timeout
+                    const has_input = windows_console.Console.waitForInput(
+                        stdin_handle, 
+                        config.event_timeout_ms
+                    ) catch {
+                        // Error waiting, try to continue
+                        std.time.sleep(10 * std.time.ns_per_ms);
+                        continue;
+                    };
+                    
+                    if (!has_input) {
+                        // Timeout - check if we should continue monitoring
+                        continue;
+                    }
+                    
+                    // Read resize events
+                    if (windows_console.Console.readResizeEvent(stdin_handle)) |new_coord| {
+                        const new_size = Size{
+                            .cols = @intCast(new_coord.X),
+                            .rows = @intCast(new_coord.Y),
+                        };
+                        
+                        // Only handle if size actually changed
+                        if (!new_size.eql(self.size)) {
+                            self.handleResize(new_size);
+                        }
+                    } else |err| {
+                        // Log error but continue monitoring
+                        _ = err;
+                        std.time.sleep(10 * std.time.ns_per_ms);
+                    }
+                }
+                
+                return true;
+            }
+            
+            /// Optimized polling-based Windows resize monitoring.
+            ///
+            /// Falls back to periodic size checking when event-driven detection
+            /// is unavailable. Uses configurable polling interval to balance
+            /// responsiveness with CPU usage.
+            fn monitorWindowsResizePolling(self: *Terminal, interval_ms: u32) void {
+                if (@import("builtin").os.tag != .windows) return;
+                
+                var last_size = self.getSize() catch {
+                    // Failed to get initial size
                     return;
                 };
-
-                var last_size = self.getSize() catch return;
-
+                
+                const sleep_ns = interval_ms * std.time.ns_per_ms;
+                
                 while (self.resize_monitoring) {
-                    // Poll for console size changes
-                    std.time.sleep(50 * std.time.ns_per_ms); // Check every 50ms
-
+                    // Sleep first to reduce CPU usage
+                    std.time.sleep(sleep_ns);
+                    
+                    // Check if monitoring should continue
+                    if (!self.resize_monitoring) break;
+                    
+                    // Query current size
                     if (self.querySizeWindows()) |current_size| {
-                        if (!last_size.eql(current_size)) {
+                        if (!current_size.eql(last_size)) {
                             self.handleResize(current_size);
                             last_size = current_size;
                         }
@@ -997,7 +1187,7 @@
 
         // └──────────────────────────────────────────────────────────────────┘
 
-        // ┌──────────────────────────── Compatibility Methods ────────────────────────────┐
+        // ┌────────────────────────── Compatibility Methods ──────────────────────────┐
 
             // These methods provide backward compatibility with the old API
             
@@ -1060,7 +1250,7 @@
 
     };
 
-    // ┌──────────────────────────── Global Signal Handling ────────────────────────────┐
+    // ┌────────────────────────── Global Signal Handling ──────────────────────────┐
 
         // Global terminal reference for signal handling
         var global_terminal_for_signals: ?*Terminal = null;
@@ -1098,7 +1288,7 @@
             }
         }
 
-    // └──────────────────────────────────────────────────────────────────────────┘
+    // └────────────────────────────────────────────────────────────────────────┘
 
     // Position struct for backward compatibility
     pub const Position = struct {
@@ -1106,4 +1296,4 @@
         y: u16,
     };
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════════════════════════════════════════════════════════╝

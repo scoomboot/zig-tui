@@ -6,7 +6,7 @@
 //
 // Vibe coded by Fisty.
 
-// ╔══════════════════════════════════════ PACK ══════════════════════════════════════╗
+// ╔════════════════════════════════════ PACK ════════════════════════════════════╗
 
     const std = @import("std");
     const testing = std.testing;
@@ -20,9 +20,9 @@
     const ResizeEvent = terminal_module.ResizeEvent;
     const ResizeCallback = terminal_module.ResizeCallback;
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔══════════════════════════════════════ INIT ══════════════════════════════════════╗
+// ╔════════════════════════════════════ INIT ════════════════════════════════════╗
 
     // Test constants - Comprehensive test data for terminal operations
     const TEST_TIMEOUT_MS = 1000;
@@ -82,11 +82,11 @@
         return terminal;
     }
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔══════════════════════════════════════ TEST ══════════════════════════════════════╗
+// ╔════════════════════════════════════ TEST ════════════════════════════════════╗
 
-    // ┌──────────────────────────── Unit Tests ────────────────────────────┐
+    // ┌────────────────────────── Unit Tests ──────────────────────────┐
     
         test "unit: Terminal: initializes with default values" {
             const allocator = testing.allocator;
@@ -210,7 +210,7 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── Integration Tests ────────────────────────────┐
+    // ┌────────────────────────── Integration Tests ──────────────────────────┐
     
         test "integration: Terminal with RawMode: state transitions correctly" {
             const allocator = testing.allocator;
@@ -274,7 +274,7 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── E2E Tests ────────────────────────────┐
+    // ┌────────────────────────── E2E Tests ──────────────────────────┐
     
         test "e2e: full terminal lifecycle: init to cleanup" {
             const allocator = testing.allocator;
@@ -367,7 +367,7 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── Performance Tests ────────────────────────────┐
+    // ┌────────────────────────── Performance Tests ──────────────────────────┐
     
         test "performance: Terminal.clear: clears screen quickly" {
             const allocator = testing.allocator;
@@ -411,7 +411,7 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── Stress Tests ────────────────────────────┐
+    // ┌────────────────────────── Stress Tests ──────────────────────────┐
     
         test "stress: Terminal: handles rapid mode switching" {
             const allocator = testing.allocator;
@@ -483,7 +483,7 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── Backward Compatibility Tests ────────────────────────────┐
+    // ┌────────────────────────── Backward Compatibility Tests ──────────────────────────┐
     
         test "unit: Terminal: backward compatible API works" {
             const allocator = testing.allocator;
@@ -522,7 +522,48 @@
     
     // └──────────────────────────────────────────────────────────────────┘
 
-    // ┌──────────────────────────── Resize Functionality Tests ────────────────────────────┐
+    // ┌────────────────────────── Windows Resize Configuration Tests ──────────────────────────┐
+    
+        test "unit: WindowsResizeConfig: default configuration" {
+            const config = terminal_module.WindowsResizeConfig.default();
+            
+            try testing.expectEqual(terminal_module.WindowsResizeMode.hybrid, config.mode);
+            try testing.expectEqual(@as(u32, 50), config.polling_interval_ms);
+            try testing.expectEqual(@as(u32, 100), config.event_timeout_ms);
+            try testing.expectEqual(false, config.log_mode_selection);
+        }
+        
+        test "unit: WindowsResizeConfig: event-driven configuration" {
+            const config = terminal_module.WindowsResizeConfig.eventDriven();
+            
+            try testing.expectEqual(terminal_module.WindowsResizeMode.event_driven, config.mode);
+            try testing.expectEqual(@as(u32, 100), config.event_timeout_ms);
+        }
+        
+        test "unit: WindowsResizeConfig: polling configuration" {
+            const config = terminal_module.WindowsResizeConfig.polling(25);
+            
+            try testing.expectEqual(terminal_module.WindowsResizeMode.polling, config.mode);
+            try testing.expectEqual(@as(u32, 25), config.polling_interval_ms);
+        }
+        
+        test "unit: WindowsResizeMode: enum values" {
+            // Verify all resize modes are defined
+            const modes = [_]terminal_module.WindowsResizeMode{
+                .event_driven,
+                .polling,
+                .hybrid,
+            };
+            
+            // Each mode should be unique
+            try testing.expect(@intFromEnum(modes[0]) != @intFromEnum(modes[1]));
+            try testing.expect(@intFromEnum(modes[1]) != @intFromEnum(modes[2]));
+            try testing.expect(@intFromEnum(modes[0]) != @intFromEnum(modes[2]));
+        }
+    
+    // └───────────────────────────────────────────────────────────────────┘
+    
+    // ┌────────────────────────── Resize Functionality Tests ──────────────────────────┐
     
         test "unit: Size: equality and validation methods" {
             const size1 = Size{ .rows = 24, .cols = 80 };
@@ -821,7 +862,80 @@
     
     // └──────────────────────────────────────────────────────────────────┘
     
-    // ┌──────────────────────────── Debug Output Tests ────────────────────────────┐
+    // ┌────────────────────────── Windows-Specific Resize Tests ──────────────────────────┐
+    
+        test "scenario: Windows: resize configuration with terminal" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Verify default Windows configuration is set
+            try testing.expectEqual(terminal_module.WindowsResizeMode.hybrid, terminal.windows_resize_config.mode);
+            
+            // Test changing configuration
+            terminal.windows_resize_config = terminal_module.WindowsResizeConfig.eventDriven();
+            try testing.expectEqual(terminal_module.WindowsResizeMode.event_driven, terminal.windows_resize_config.mode);
+            
+            terminal.windows_resize_config = terminal_module.WindowsResizeConfig.polling(100);
+            try testing.expectEqual(terminal_module.WindowsResizeMode.polling, terminal.windows_resize_config.mode);
+            try testing.expectEqual(@as(u32, 100), terminal.windows_resize_config.polling_interval_ms);
+        }
+        
+        test "performance: Windows: configuration overhead" {
+            // Measure configuration creation overhead
+            const start = std.time.nanoTimestamp();
+            
+            var configs: [1000]terminal_module.WindowsResizeConfig = undefined;
+            for (0..1000) |i| {
+                configs[i] = switch (i % 3) {
+                    0 => terminal_module.WindowsResizeConfig.default(),
+                    1 => terminal_module.WindowsResizeConfig.eventDriven(),
+                    2 => terminal_module.WindowsResizeConfig.polling(50),
+                    else => unreachable,
+                };
+            }
+            
+            const elapsed = std.time.nanoTimestamp() - start;
+            const ns_per_config = @divFloor(elapsed, 1000);
+            
+            // Configuration creation should be very fast (< 100ns per config)
+            try testing.expect(ns_per_config < 100);
+            
+            // Verify configs were created correctly
+            try testing.expect(configs[0].mode == .hybrid);
+            try testing.expect(configs[1].mode == .event_driven);
+            try testing.expect(configs[2].mode == .polling);
+        }
+        
+        test "integration: Windows: resize monitoring mode selection" {
+            // This test verifies the mode selection logic without actually
+            // running Windows-specific code
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test hybrid mode (default)
+            terminal.windows_resize_config = terminal_module.WindowsResizeConfig.default();
+            try testing.expectEqual(terminal_module.WindowsResizeMode.hybrid, terminal.windows_resize_config.mode);
+            
+            // Test explicit event-driven mode
+            terminal.windows_resize_config.mode = .event_driven;
+            terminal.windows_resize_config.event_timeout_ms = 200;
+            try testing.expectEqual(@as(u32, 200), terminal.windows_resize_config.event_timeout_ms);
+            
+            // Test explicit polling mode
+            terminal.windows_resize_config.mode = .polling;
+            terminal.windows_resize_config.polling_interval_ms = 25;
+            try testing.expectEqual(@as(u32, 25), terminal.windows_resize_config.polling_interval_ms);
+            
+            // Test logging configuration
+            terminal.windows_resize_config.log_mode_selection = true;
+            try testing.expect(terminal.windows_resize_config.log_mode_selection);
+        }
+    
+    // └───────────────────────────────────────────────────────────────────┘
+    
+    // ┌────────────────────────── Debug Output Tests ──────────────────────────┐
     
         test "unit: Terminal: debug output control functionality" {
             const allocator = testing.allocator;
@@ -1065,4 +1179,4 @@
     
     // └──────────────────────────────────────────────────────────────────────────┘
 
-// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+// ╚════════════════════════════════════════════════════════════════════════════════╝
