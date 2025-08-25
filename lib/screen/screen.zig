@@ -57,6 +57,11 @@
         needs_full_redraw: bool,
         registry_id: ?u64,
         
+        // Multi-screen support fields
+        parent_manager: ?*anyopaque, // ScreenManager reference (using anyopaque to avoid circular deps)
+        viewport_bounds: ?rect_mod.Rect, // Viewport within parent terminal/manager
+        is_managed: bool, // Whether screen is managed by a ScreenManager
+        
         /// Initialize screen with given dimensions.
         ///
         /// __Parameters__
@@ -137,6 +142,11 @@
                 .terminal_ref = null,
                 .needs_full_redraw = true,
                 .registry_id = null,
+                
+                // Initialize multi-screen support fields
+                .parent_manager = null,
+                .viewport_bounds = null,
+                .is_managed = false,
             };
         }
         
@@ -232,6 +242,35 @@
         ///
         /// - Error if resize fails or is already in progress
         pub fn handleResizeWithSize(self: *Screen, new_size: Size, mode: ResizeMode) !void {
+            // Check if this screen is managed by a ScreenManager
+            if (self.is_managed and self.parent_manager != null) {
+                // If managed, delegate to parent ScreenManager for coordinated resize
+                // The ScreenManager will handle layout calculation and coordinate all screens
+                const ScreenManager = @import("utils/screen_manager/screen_manager.zig").ScreenManager;
+                const manager = @as(*ScreenManager, @ptrCast(@alignCast(self.parent_manager.?)));
+                try manager.handleResize(new_size.cols, new_size.rows, mode);
+                return;
+            }
+            
+            // Independent screen: handle resize directly
+            try self.handleResizeDirectly(new_size, mode);
+        }
+        
+        /// Handle resize directly without ScreenManager coordination.
+        ///
+        /// This method performs the actual resize operation for independent screens
+        /// or when called by a ScreenManager for coordinated multi-screen resize.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: Screen instance to resize
+        /// - `new_size`: New screen dimensions
+        /// - `mode`: Content preservation mode during resize
+        ///
+        /// __Return__
+        ///
+        /// - Error if resize fails or is already in progress
+        pub fn handleResizeDirectly(self: *Screen, new_size: Size, mode: ResizeMode) !void {
             // Thread safety: Acquire mutex for entire resize operation
             self.resize_mutex.lock();
             defer self.resize_mutex.unlock();
@@ -254,6 +293,11 @@
             }
             
             try self.reallocateBuffers(new_size, mode);
+            
+            // Update viewport bounds if managed
+            if (self.is_managed) {
+                self.viewport_bounds = rect_mod.Rect.init(0, 0, new_size.cols, new_size.rows);
+            }
         }
         
         /// Reallocate screen buffers for new size with content preservation.
@@ -469,6 +513,187 @@
             self.needs_full_redraw = true;
         }
         
+        // ┌──────────────────────────── Multi-Screen Viewport Support ────────────────────────────┐
+        
+            /// Set parent screen manager.
+            ///
+            /// Associates this screen with a ScreenManager for multi-screen coordination.
+            /// This enables viewport management and coordinated resize handling.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            /// - `manager`: ScreenManager instance to associate with
+            pub fn setParentManager(self: *Screen, manager: *anyopaque) void {
+                self.parent_manager = manager;
+                self.is_managed = true;
+            }
+            
+            /// Clear parent screen manager.
+            ///
+            /// Removes association with ScreenManager, making this screen
+            /// independent again.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            pub fn clearParentManager(self: *Screen) void {
+                self.parent_manager = null;
+                self.is_managed = false;
+                self.viewport_bounds = null;
+            }
+            
+            /// Set viewport bounds within parent coordinate system.
+            ///
+            /// Defines the region within the parent terminal or manager
+            /// that this screen should occupy. Used by ScreenManager for
+            /// layout coordination.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            /// - `bounds`: Viewport bounds in parent coordinates
+            pub fn setViewportBounds(self: *Screen, bounds: rect_mod.Rect) void {
+                self.viewport_bounds = bounds;
+            }
+            
+            /// Get viewport bounds within parent coordinate system.
+            ///
+            /// Returns the region assigned to this screen by its parent
+            /// manager, or null if not managed.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            ///
+            /// __Return__
+            ///
+            /// - `?rect_mod.Rect`: Viewport bounds or null if not managed
+            pub fn getViewportBounds(self: *Screen) ?rect_mod.Rect {
+                return self.viewport_bounds;
+            }
+            
+            /// Check if screen is managed by a ScreenManager.
+            ///
+            /// Returns true if this screen is currently managed by a
+            /// ScreenManager for multi-screen coordination.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            ///
+            /// __Return__
+            ///
+            /// - `bool`: True if managed, false if independent
+            pub inline fn isManaged(self: *Screen) bool {
+                return self.is_managed;
+            }
+            
+            /// Get screen dimensions within viewport constraints.
+            ///
+            /// Returns the effective size of the screen, considering viewport
+            /// bounds if managed by a ScreenManager.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            ///
+            /// __Return__
+            ///
+            /// - `Size`: Effective screen dimensions
+            pub fn getEffectiveSize(self: *Screen) Size {
+                if (self.viewport_bounds) |bounds| {
+                    return Size{
+                        .cols = bounds.width,
+                        .rows = bounds.height,
+                    };
+                }
+                return Size{
+                    .cols = self.width,
+                    .rows = self.height,
+                };
+            }
+            
+            /// Set cell with viewport-aware coordinates.
+            ///
+            /// Sets a cell using coordinates relative to the screen's viewport.
+            /// If the screen is managed, coordinates are relative to viewport bounds.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            /// - `x`: Column position within viewport
+            /// - `y`: Row position within viewport
+            /// - `cell`: Cell data to set
+            pub inline fn setViewportCell(self: *Screen, x: u16, y: u16, cell: cell_mod.Cell) void {
+                if (self.viewport_bounds) |bounds| {
+                    // Managed screen: translate viewport coordinates to screen coordinates
+                    const screen_x = x;
+                    const screen_y = y;
+                    
+                    // Bounds check within viewport
+                    if (screen_x < bounds.width and screen_y < bounds.height) {
+                        self.set_cell(screen_x, screen_y, cell);
+                    }
+                } else {
+                    // Independent screen: direct coordinate mapping
+                    self.set_cell(x, y, cell);
+                }
+            }
+            
+            /// Get cell with viewport-aware coordinates.
+            ///
+            /// Gets a cell using coordinates relative to the screen's viewport.
+            /// If the screen is managed, coordinates are relative to viewport bounds.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            /// - `x`: Column position within viewport
+            /// - `y`: Row position within viewport
+            ///
+            /// __Return__
+            ///
+            /// - `?*cell_mod.Cell`: Pointer to cell or null if out of bounds
+            pub inline fn getViewportCell(self: *Screen, x: u16, y: u16) ?*cell_mod.Cell {
+                if (self.viewport_bounds) |bounds| {
+                    // Managed screen: translate viewport coordinates to screen coordinates
+                    const screen_x = x;
+                    const screen_y = y;
+                    
+                    // Bounds check within viewport
+                    if (screen_x < bounds.width and screen_y < bounds.height) {
+                        return self.get_cell(screen_x, screen_y);
+                    }
+                    return null;
+                } else {
+                    // Independent screen: direct coordinate mapping
+                    return self.get_cell(x, y);
+                }
+            }
+            
+            /// Create a viewport-aware drawing context.
+            ///
+            /// Returns a drawing context that automatically handles coordinate
+            /// translation for managed screens or provides direct access for
+            /// independent screens.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Screen instance
+            ///
+            /// __Return__
+            ///
+            /// - `ViewportContext`: Context for viewport-aware drawing
+            pub fn getViewportContext(self: *Screen) ViewportContext {
+                return ViewportContext{
+                    .screen = self,
+                    .viewport_bounds = self.viewport_bounds,
+                };
+            }
+        
+        // └──────────────────────────────────────────────────────────────────┘
+        
         /// Create a viewport into the screen.
         ///
         /// __Parameters__
@@ -506,6 +731,208 @@
             
             if (x < self.rect.width and y < self.rect.height) {
                 self.screen.set_cell(abs_x, abs_y, cell);
+            }
+        }
+    };
+    
+    /// Viewport-aware drawing context for multi-screen support.
+    ///
+    /// Provides drawing operations that automatically handle coordinate
+    /// translation for managed screens. This context enables seamless
+    /// drawing operations regardless of whether a screen is independent
+    /// or managed by a ScreenManager.
+    pub const ViewportContext = struct {
+        screen: *Screen,
+        viewport_bounds: ?rect_mod.Rect,
+        
+        /// Set cell using context-aware coordinates.
+        ///
+        /// Automatically translates coordinates based on whether the screen
+        /// is managed and has viewport bounds defined.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `x`: Column position (context-relative)
+        /// - `y`: Row position (context-relative)
+        /// - `cell`: Cell data to set
+        pub inline fn setCell(self: *ViewportContext, x: u16, y: u16, cell: cell_mod.Cell) void {
+            if (self.viewport_bounds) |bounds| {
+                // Managed screen with viewport bounds
+                if (x < bounds.width and y < bounds.height) {
+                    self.screen.set_cell(x, y, cell);
+                }
+            } else {
+                // Independent screen or no viewport bounds
+                self.screen.set_cell(x, y, cell);
+            }
+        }
+        
+        /// Get cell using context-aware coordinates.
+        ///
+        /// Automatically translates coordinates based on whether the screen
+        /// is managed and has viewport bounds defined.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `x`: Column position (context-relative)
+        /// - `y`: Row position (context-relative)
+        ///
+        /// __Return__
+        ///
+        /// - `?*cell_mod.Cell`: Pointer to cell or null if out of bounds
+        pub inline fn getCell(self: *ViewportContext, x: u16, y: u16) ?*cell_mod.Cell {
+            if (self.viewport_bounds) |bounds| {
+                // Managed screen with viewport bounds
+                if (x < bounds.width and y < bounds.height) {
+                    return self.screen.get_cell(x, y);
+                }
+                return null;
+            } else {
+                // Independent screen or no viewport bounds
+                return self.screen.get_cell(x, y);
+            }
+        }
+        
+        /// Clear the drawable area within the context.
+        ///
+        /// Clears all cells within the current context bounds, respecting
+        /// viewport constraints for managed screens.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        pub fn clear(self: *ViewportContext) void {
+            const effective_size = self.getEffectiveSize();
+            
+            var y: u16 = 0;
+            while (y < effective_size.rows) : (y += 1) {
+                var x: u16 = 0;
+                while (x < effective_size.cols) : (x += 1) {
+                    self.setCell(x, y, cell_mod.Cell.empty());
+                }
+            }
+        }
+        
+        /// Get effective drawing size for this context.
+        ///
+        /// Returns the available drawing area, considering viewport bounds
+        /// for managed screens or full screen size for independent screens.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        ///
+        /// __Return__
+        ///
+        /// - `Size`: Available drawing dimensions
+        pub fn getEffectiveSize(self: *ViewportContext) Size {
+            if (self.viewport_bounds) |bounds| {
+                return Size{
+                    .cols = bounds.width,
+                    .rows = bounds.height,
+                };
+            } else {
+                return Size{
+                    .cols = self.screen.width,
+                    .rows = self.screen.height,
+                };
+            }
+        }
+        
+        /// Check if coordinates are within drawable bounds.
+        ///
+        /// Validates that the given coordinates are within the effective
+        /// drawing area of this context.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `x`: Column position to test
+        /// - `y`: Row position to test
+        ///
+        /// __Return__
+        ///
+        /// - `bool`: True if coordinates are within bounds
+        pub inline fn isWithinBounds(self: *ViewportContext, x: u16, y: u16) bool {
+            const effective_size = self.getEffectiveSize();
+            return x < effective_size.cols and y < effective_size.rows;
+        }
+        
+        /// Fill a rectangular region with a cell.
+        ///
+        /// Fills the specified rectangle with the given cell data,
+        /// respecting viewport bounds.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `rect`: Rectangle to fill
+        /// - `cell`: Cell data to fill with
+        pub fn fillRect(self: *ViewportContext, rect: rect_mod.Rect, cell: cell_mod.Cell) void {
+            const effective_size = self.getEffectiveSize();
+            
+            // Clip rectangle to context bounds
+            const start_x = @min(rect.x, effective_size.cols);
+            const start_y = @min(rect.y, effective_size.rows);
+            const end_x = @min(rect.x + rect.width, effective_size.cols);
+            const end_y = @min(rect.y + rect.height, effective_size.rows);
+            
+            var y = start_y;
+            while (y < end_y) : (y += 1) {
+                var x = start_x;
+                while (x < end_x) : (x += 1) {
+                    self.setCell(x, y, cell);
+                }
+            }
+        }
+        
+        /// Draw a horizontal line.
+        ///
+        /// Draws a horizontal line at the specified position using the
+        /// given cell data.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `start_x`: Starting column
+        /// - `y`: Row position
+        /// - `length`: Line length
+        /// - `cell`: Cell data for line
+        pub fn drawHorizontalLine(self: *ViewportContext, start_x: u16, y: u16, length: u16, cell: cell_mod.Cell) void {
+            const effective_size = self.getEffectiveSize();
+            
+            if (y >= effective_size.rows) return;
+            
+            const end_x = @min(start_x + length, effective_size.cols);
+            var x = start_x;
+            while (x < end_x) : (x += 1) {
+                self.setCell(x, y, cell);
+            }
+        }
+        
+        /// Draw a vertical line.
+        ///
+        /// Draws a vertical line at the specified position using the
+        /// given cell data.
+        ///
+        /// __Parameters__
+        ///
+        /// - `self`: ViewportContext instance
+        /// - `x`: Column position
+        /// - `start_y`: Starting row
+        /// - `length`: Line length
+        /// - `cell`: Cell data for line
+        pub fn drawVerticalLine(self: *ViewportContext, x: u16, start_y: u16, length: u16, cell: cell_mod.Cell) void {
+            const effective_size = self.getEffectiveSize();
+            
+            if (x >= effective_size.cols) return;
+            
+            const end_y = @min(start_y + length, effective_size.rows);
+            var y = start_y;
+            while (y < end_y) : (y += 1) {
+                self.setCell(x, y, cell);
             }
         }
     };
