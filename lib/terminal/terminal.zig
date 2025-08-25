@@ -6,7 +6,7 @@
 //
 // Vibe coded by Fisty.
 
-// ╔════════════════════════════════════ PACK ════════════════════════════════════╗
+// ╔════════════════════════════════════════ PACK ════════════════════════════════════════╗
 
     const std = @import("std");
     const RawMode = @import("utils/raw_mode/raw_mode.zig").RawMode;
@@ -18,10 +18,11 @@
         struct {};
     const os = std.os;
     const posix = std.posix;
+    const c = std.c;
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔════════════════════════════════════ INIT ════════════════════════════════════╗
+// ╔════════════════════════════════════════ INIT ════════════════════════════════════════╗
 
     pub const TerminalError = error{
         InitFailed,
@@ -36,6 +37,15 @@
         SignalHandlingFailed,
         ANSIQueryFailed,
         DeviceStatusReportFailed,
+    };
+
+    pub const SignalHandlerError = error{
+        PipeCreationFailed,
+        SignalInstallFailed,
+        SignalMaskFailed,
+        PipeWriteFailed,
+        PipeReadFailed,
+        PollFailed,
     };
 
     pub const Size = struct {
@@ -229,9 +239,20 @@
         }
     };
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔════════════════════════════════════ CORE ════════════════════════════════════╗
+// ╔════════════════════════════════════════ CORE ════════════════════════════════════════╗
+
+    // ┌──────────────────────────── Signal Safety Infrastructure ────────────────────────────┐
+    
+        // Signal pipe for self-pipe trick (Unix only)
+        var signal_pipe: [2]posix.fd_t = undefined;
+        var signal_pipe_initialized: bool = false;
+        
+        // Atomic flag for signal received notification
+        var signal_received: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
+        
+    // └──────────────────────────────────────────────────────────────────────────────────────┘
 
     pub const Terminal = struct {
         allocator: std.mem.Allocator,
@@ -244,12 +265,12 @@
         size: Size,
         ansi_builder: ansi.Ansi,
         
-        // ┌────────────────────────── Output Control ──────────────────────────┐
+        // ┌──────────────────────────── Output Control ────────────────────────────┐
         
             // Output control for testing and debugging
             debug_output: bool,
             
-        // └────────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
         
         // Size detection and caching
         size_cache: ?Size,
@@ -261,13 +282,17 @@
         resize_mutex: std.Thread.Mutex,
         resize_monitoring: bool,
         
+        // Signal safety infrastructure for Unix
+        signal_thread: ?std.Thread,
+        signal_handler_active: bool,
+        
         // Callback registry for screen associations
         callback_registry: CallbackRegistry,
         
         // Windows-specific resize configuration
         windows_resize_config: WindowsResizeConfig,
 
-        // ┌────────────────────────── Initialization ──────────────────────────┐
+        // ┌──────────────────────────── Initialization ────────────────────────────┐
 
             /// Initialize terminal with default settings
             pub fn init(allocator: std.mem.Allocator) !Terminal {
@@ -302,6 +327,8 @@
                     .resize_monitoring = false,
                     .callback_registry = CallbackRegistry.init(allocator),
                     .windows_resize_config = WindowsResizeConfig.default(),
+                    .signal_thread = null,
+                    .signal_handler_active = false,
                 };
                 defer temp_term.resize_callbacks.deinit();
                 defer temp_term.ansi_builder.deinit();
@@ -335,6 +362,10 @@
                     .resize_thread = null,
                     .resize_mutex = .{},
                     .resize_monitoring = false,
+                    
+                    // Initialize signal safety infrastructure
+                    .signal_thread = null,
+                    .signal_handler_active = false,
                     
                     // Initialize callback registry for screen associations
                     .callback_registry = CallbackRegistry.init(allocator),
@@ -381,9 +412,9 @@
                 self.ansi_builder.deinit();
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Mode Control ──────────────────────────┐
+        // ┌──────────────────────────── Mode Control ────────────────────────────┐
 
             /// Enter raw mode for direct input handling
             pub fn enterRawMode(self: *Terminal) !void {
@@ -425,9 +456,9 @@
                 self.use_alt_screen = false;
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Screen Operations ──────────────────────────┐
+        // ┌──────────────────────────── Screen Operations ────────────────────────────┐
 
             /// Clear entire screen
             pub fn clear(self: *Terminal) !void {
@@ -545,9 +576,9 @@
                 }
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Cursor Control ──────────────────────────┐
+        // ┌──────────────────────────── Cursor Control ────────────────────────────┐
 
             /// Set cursor position (1-based)
             pub fn setCursorPos(self: *Terminal, row: u16, col: u16) !void {
@@ -604,9 +635,9 @@
                 self.debug_output = enabled;
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Internal Helpers ──────────────────────────┐
+        // ┌──────────────────────────── Internal Helpers ────────────────────────────┐
 
             /// Write ANSI escape sequence to terminal output.
             ///
@@ -851,9 +882,9 @@
                 _ = self;
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Resize Monitoring ──────────────────────────┐
+        // ┌──────────────────────────── Resize Monitoring ────────────────────────────┐
 
             /// Start monitoring terminal resize events.
             ///
@@ -996,35 +1027,88 @@
                 );
             }
 
-            /// Start Unix resize monitoring (SIGWINCH)
+            /// Start Unix resize monitoring (SIGWINCH) with signal safety.
+            ///
+            /// Sets up the self-pipe trick for signal safety, installs the
+            /// SIGWINCH handler, and starts the signal processing thread.
             fn startUnixResizeMonitoring(self: *Terminal) !void {
-                // Install SIGWINCH handler
+                // Create self-pipe for signal communication
+                if (!signal_pipe_initialized) {
+                    signal_pipe = posix.pipe() catch {
+                        return SignalHandlerError.PipeCreationFailed;
+                    };
+                    signal_pipe_initialized = true;
+                    
+                    // Make pipe non-blocking
+                    const flags = posix.fcntl(signal_pipe[0], posix.F.GETFL, 0) catch 0;
+                    const new_flags = os.linux.O{ .NONBLOCK = true };
+                    _ = posix.fcntl(signal_pipe[0], posix.F.SETFL, @as(u32, @bitCast(new_flags)) | flags) catch {};
+                }
+                
+                // Start signal processing thread
+                self.signal_handler_active = true;
+                self.signal_thread = std.Thread.spawn(.{}, processSignals, .{self}) catch {
+                    self.signal_handler_active = false;
+                    return TerminalError.ThreadCreationFailed;
+                };
+                
+                // Install minimal SIGWINCH handler
                 const handler = posix.Sigaction{
                     .handler = .{ .handler = handleSigwinch },
                     .mask = posix.empty_sigset,
                     .flags = posix.SA.RESTART,
                 };
-
-                // Store previous handler (for restoration)
-                _ = posix.sigaction(posix.SIG.WINCH, &handler, null);
-
+                
+                if (posix.sigaction(posix.SIG.WINCH, &handler, null) != 0) {
+                    // Clean up thread if signal installation fails
+                    self.signal_handler_active = false;
+                    if (self.signal_thread) |thread| {
+                        // Wake up thread to exit
+                        const byte: u8 = 0;
+                        _ = posix.write(signal_pipe[1], &[_]u8{byte});
+                        thread.join();
+                        self.signal_thread = null;
+                    }
+                    return SignalHandlerError.SignalInstallFailed;
+                }
+                
                 // Store terminal reference globally for signal handler access
                 setGlobalTerminalForSignals(self);
             }
 
-            /// Stop Unix resize monitoring
+            /// Stop Unix resize monitoring with proper cleanup.
+            ///
+            /// Cleanly shuts down the signal processing thread, restores the
+            /// default signal handler, and cleans up the self-pipe.
             fn stopUnixResizeMonitoring(self: *Terminal) !void {
+                // Signal thread to stop
+                self.signal_handler_active = false;
+                
+                // Stop signal processing thread if running
+                if (self.signal_thread) |thread| {
+                    // Wake up processing thread to exit
+                    if (signal_pipe_initialized) {
+                        const byte: u8 = 0;
+                        _ = posix.write(signal_pipe[1], &[_]u8{byte}) catch {};
+                    }
+                    
+                    thread.join();
+                    self.signal_thread = null;
+                }
+                
                 // Restore default SIGWINCH handler
                 const default_handler = posix.Sigaction{
                     .handler = .{ .handler = posix.SIG.DFL },
                     .mask = posix.empty_sigset,
                     .flags = 0,
                 };
-
                 _ = posix.sigaction(posix.SIG.WINCH, &default_handler, null);
-
+                
+                // Clear global terminal reference
                 clearGlobalTerminalForSignals();
-                _ = self;
+                
+                // Note: We keep the pipe open for potential reuse
+                // It will be cleaned up on program exit
             }
 
             /// Start Windows resize monitoring (console events in thread)
@@ -1046,6 +1130,56 @@
                     thread.join();
                     self.resize_thread = null;
                 }
+            }
+
+            /// Temporarily block SIGWINCH during critical operations.
+            ///
+            /// Blocks the SIGWINCH signal to prevent resize events during
+            /// critical sections where signal interruption could cause issues.
+            /// Returns the previous signal mask for later restoration.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Terminal instance pointer
+            ///
+            /// __Return__
+            ///
+            /// - `posix.sigset_t`: Previous signal mask (for restoration)
+            /// - `SignalHandlerError.SignalMaskFailed`: If signal masking fails
+            pub fn blockResizeSignals(self: *Terminal) !posix.sigset_t {
+                _ = self;
+                
+                var new_set: posix.sigset_t = undefined;
+                var old_set: posix.sigset_t = undefined;
+                
+                // Initialize empty signal set
+                new_set = posix.empty_sigset;
+                // Add SIGWINCH to the set
+                os.linux.sigaddset(&new_set, posix.SIG.WINCH);
+                
+                if (os.linux.sigprocmask(posix.SIG.BLOCK, &new_set, &old_set) != 0) {
+                    return SignalHandlerError.SignalMaskFailed;
+                }
+                
+                return old_set;
+            }
+
+            /// Restore previous signal mask.
+            ///
+            /// Restores the signal mask to a previous state, typically used
+            /// after completing a critical section that required signal blocking.
+            ///
+            /// __Parameters__
+            ///
+            /// - `self`: Terminal instance pointer
+            /// - `old_mask`: Signal mask to restore
+            ///
+            /// __Return__
+            ///
+            /// - `void`: This function does not return a value
+            pub fn restoreSignalMask(self: *Terminal, old_mask: posix.sigset_t) void {
+                _ = self;
+                _ = os.linux.sigprocmask(posix.SIG.SETMASK, &old_mask, null);
             }
 
             /// Windows resize monitoring thread function with event-driven support.
@@ -1185,9 +1319,9 @@
                 }
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
-        // ┌────────────────────────── Compatibility Methods ──────────────────────────┐
+        // ┌──────────────────────────── Compatibility Methods ────────────────────────────┐
 
             // These methods provide backward compatibility with the old API
             
@@ -1246,11 +1380,11 @@
                 try self.stdout.writeAll(text);
             }
 
-        // └──────────────────────────────────────────────────────────────────┘
+        // └──────────────────────────────────────────────────────────────────────────┘
 
     };
 
-    // ┌────────────────────────── Global Signal Handling ──────────────────────────┐
+    // ┌──────────────────────────── Global Signal Handling ────────────────────────────┐
 
         // Global terminal reference for signal handling
         var global_terminal_for_signals: ?*Terminal = null;
@@ -1270,25 +1404,76 @@
             global_terminal_for_signals = null;
         }
 
-        /// SIGWINCH signal handler
+        /// Async-signal-safe SIGWINCH handler.
+        ///
+        /// This minimal handler only performs async-signal-safe operations:
+        /// - Atomic store to signal flag
+        /// - Write single byte to self-pipe
+        /// 
+        /// All complex operations are deferred to the signal processing thread.
         fn handleSigwinch(sig: c_int) callconv(.C) void {
             _ = sig;
-
-            global_signal_mutex.lock();
-            defer global_signal_mutex.unlock();
-
-            if (global_terminal_for_signals) |terminal| {
-                // Get new terminal size
-                if (terminal.refreshSize()) |new_size| {
-                    // Handle resize will be called during refreshSize if size changed
-                    _ = new_size;
-                } else |_| {
-                    // Error getting size, ignore for signal handler safety
+            
+            // Only perform async-signal-safe operations
+            signal_received.store(true, .release);
+            
+            // Write to self-pipe to wake up processing thread
+            if (signal_pipe_initialized) {
+                const byte: u8 = 1;
+                _ = posix.write(signal_pipe[1], &[_]u8{byte});
+            }
+        }
+        
+        /// Signal processing thread (runs in normal context, not signal handler).
+        ///
+        /// Monitors the signal pipe for notifications from the signal handler
+        /// and performs resize operations in a safe thread context where
+        /// all normal functions can be called safely.
+        fn processSignals(terminal: *Terminal) void {
+            // Set up poll structure for monitoring the signal pipe
+            var poll_fds = [_]posix.pollfd{
+                .{ 
+                    .fd = signal_pipe[0], 
+                    .events = posix.POLL.IN, 
+                    .revents = 0 
+                },
+            };
+            
+            while (terminal.signal_handler_active) {
+                // Wait for signal notification with 1 second timeout
+                const result = posix.poll(&poll_fds, 1, 1000) catch {
+                    // Poll failed, sleep briefly and retry
+                    std.time.sleep(10 * std.time.ns_per_ms);
+                    continue;
+                };
+                
+                if (result > 0 and (poll_fds[0].revents & posix.POLL.IN) != 0) {
+                    // Drain the pipe
+                    var buffer: [256]u8 = undefined;
+                    _ = posix.read(signal_pipe[0], &buffer) catch continue;
+                    
+                    // Check if signal was received
+                    if (signal_received.swap(false, .acquire)) {
+                        // Safe to call complex operations here (not in signal context)
+                        handleResizeFromSignal(terminal);
+                    }
                 }
             }
         }
+        
+        /// Handle resize in safe thread context.
+        ///
+        /// Called from the signal processing thread, not from the signal handler.
+        /// Safe to use ioctl, mutex operations, callbacks, and memory allocation.
+        fn handleResizeFromSignal(terminal: *Terminal) void {
+            // Now safe to call ioctl and other complex operations
+            const new_size = terminal.refreshSize() catch return;
+            
+            // handleResize will handle mutex locking and callbacks
+            _ = new_size; // Size is handled internally by refreshSize
+        }
 
-    // └────────────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────────────────┘
 
     // Position struct for backward compatibility
     pub const Position = struct {
@@ -1296,4 +1481,4 @@
         y: u16,
     };
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝

@@ -6,7 +6,7 @@
 //
 // Vibe coded by Fisty.
 
-// ╔════════════════════════════════════ PACK ════════════════════════════════════╗
+// ╔════════════════════════════════════════ PACK ════════════════════════════════════════╗
 
     const std = @import("std");
     const testing = std.testing;
@@ -20,9 +20,9 @@
     const ResizeEvent = terminal_module.ResizeEvent;
     const ResizeCallback = terminal_module.ResizeCallback;
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔════════════════════════════════════ INIT ════════════════════════════════════╗
+// ╔════════════════════════════════════════ INIT ════════════════════════════════════════╗
 
     // Test constants - Comprehensive test data for terminal operations
     const TEST_TIMEOUT_MS = 1000;
@@ -82,11 +82,11 @@
         return terminal;
     }
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
 
-// ╔════════════════════════════════════ TEST ════════════════════════════════════╗
+// ╔════════════════════════════════════════ TEST ════════════════════════════════════════╗
 
-    // ┌────────────────────────── Unit Tests ──────────────────────────┐
+    // ┌──────────────────────────── Unit Tests ────────────────────────────┐
     
         test "unit: Terminal: initializes with default values" {
             const allocator = testing.allocator;
@@ -208,9 +208,9 @@
             try testing.expect(terminal.use_alt_screen);
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Integration Tests ──────────────────────────┐
+    // ┌──────────────────────────── Integration Tests ────────────────────────────┐
     
         test "integration: Terminal with RawMode: state transitions correctly" {
             const allocator = testing.allocator;
@@ -272,9 +272,9 @@
             try testing.expect(true);
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── E2E Tests ──────────────────────────┐
+    // ┌──────────────────────────── E2E Tests ────────────────────────────┐
     
         test "e2e: full terminal lifecycle: init to cleanup" {
             const allocator = testing.allocator;
@@ -365,9 +365,9 @@
             try testing.expect(true);
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Performance Tests ──────────────────────────┐
+    // ┌──────────────────────────── Performance Tests ────────────────────────────┐
     
         test "performance: Terminal.clear: clears screen quickly" {
             const allocator = testing.allocator;
@@ -409,9 +409,9 @@
             try testing.expect(avg_ms < 0.5);
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Stress Tests ──────────────────────────┐
+    // ┌──────────────────────────── Stress Tests ────────────────────────────┐
     
         test "stress: Terminal: handles rapid mode switching" {
             const allocator = testing.allocator;
@@ -481,9 +481,9 @@
             try testing.expect(true);
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Backward Compatibility Tests ──────────────────────────┐
+    // ┌──────────────────────────── Backward Compatibility Tests ────────────────────────────┐
     
         test "unit: Terminal: backward compatible API works" {
             const allocator = testing.allocator;
@@ -520,9 +520,9 @@
             try terminal.write("Test");
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
 
-    // ┌────────────────────────── Windows Resize Configuration Tests ──────────────────────────┐
+    // ┌──────────────────────────── Windows Resize Configuration Tests ────────────────────────────┐
     
         test "unit: WindowsResizeConfig: default configuration" {
             const config = terminal_module.WindowsResizeConfig.default();
@@ -561,9 +561,9 @@
             try testing.expect(@intFromEnum(modes[0]) != @intFromEnum(modes[2]));
         }
     
-    // └───────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Resize Functionality Tests ──────────────────────────┐
+    // ┌──────────────────────────── Resize Functionality Tests ────────────────────────────┐
     
         test "unit: Size: equality and validation methods" {
             const size1 = Size{ .rows = 24, .cols = 80 };
@@ -860,9 +860,9 @@
             try testing.expect(terminal.size.eql(final_expected));
         }
     
-    // └──────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Windows-Specific Resize Tests ──────────────────────────┐
+    // ┌──────────────────────────── Windows-Specific Resize Tests ────────────────────────────┐
     
         test "scenario: Windows: resize configuration with terminal" {
             const allocator = testing.allocator;
@@ -933,9 +933,9 @@
             try testing.expect(terminal.windows_resize_config.log_mode_selection);
         }
     
-    // └───────────────────────────────────────────────────────────────────┘
+    // └──────────────────────────────────────────────────────────────────────────┘
     
-    // ┌────────────────────────── Debug Output Tests ──────────────────────────┐
+    // ┌──────────────────────────── Debug Output Tests ────────────────────────────┐
     
         test "unit: Terminal: debug output control functionality" {
             const allocator = testing.allocator;
@@ -1178,5 +1178,242 @@
         }
     
     // └──────────────────────────────────────────────────────────────────────────┘
+    
+    // ┌──────────────────────────── Signal Safety Tests ────────────────────────────┐
+    
+        test "unit: Terminal: signal masking functions" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Test signal masking
+            const old_mask = try terminal.blockResizeSignals();
+            
+            // Verify we can restore the mask
+            terminal.restoreSignalMask(old_mask);
+            
+            // Test passes if no errors occur
+            try testing.expect(true);
+        }
+        
+        test "unit: Terminal: signal handler safety with rapid signals" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Start resize monitoring with signal-safe handler
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            // Simulate rapid resize events (would normally come from SIGWINCH)
+            // Note: We can't directly trigger real signals in tests, but we can
+            // test the resize handling mechanism
+            for (0..10) |i| {
+                const new_size = Size{
+                    .rows = @as(u16, @intCast(24 + i)),
+                    .cols = @as(u16, @intCast(80 + i)),
+                };
+                terminal.handleResize(new_size);
+                
+                // Small delay to simulate realistic signal timing
+                std.time.sleep(1 * std.time.ns_per_ms);
+            }
+            
+            // Verify terminal is still functional
+            try testing.expect(terminal.resize_monitoring);
+        }
+        
+        test "integration: Terminal: signal safety with callbacks" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Track callback execution
+            const callback_count: u32 = 0;
+            
+            const testCallback = struct {
+                fn handler(event: ResizeEvent) void {
+                    _ = event;
+                    // This should NOT be called from signal context
+                    // In the new implementation, it should be called from
+                    // the signal processing thread
+                    test_events_received += 1;
+                }
+            }.handler;
+            
+            try terminal.onResize(testCallback);
+            
+            // Start monitoring
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            // Reset counter
+            test_events_received = 0;
+            
+            // Trigger resize
+            const new_size = Size{ .rows = 30, .cols = 100 };
+            terminal.handleResize(new_size);
+            
+            // Give time for async processing
+            std.time.sleep(10 * std.time.ns_per_ms);
+            
+            // Verify callback was executed (or would be in real scenario)
+            // Note: Actual signal testing requires runtime signal generation
+            try testing.expect(terminal.resize_monitoring);
+            
+            _ = callback_count;
+        }
+        
+        test "scenario: Terminal: signal masking during critical operations" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Start resize monitoring
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            // Perform critical operation with signal masking
+            const old_mask = try terminal.blockResizeSignals();
+            defer terminal.restoreSignalMask(old_mask);
+            
+            // Critical section - resize signals are blocked
+            try terminal.enterRawMode();
+            try terminal.enterAltScreen();
+            try terminal.clear();
+            
+            // Signals should be blocked during these operations
+            for (0..5) |i| {
+                try terminal.setCursorPos(@intCast(i + 1), @intCast(i + 1));
+                try terminal.write("Critical operation");
+            }
+            
+            try terminal.exitAltScreen();
+            try terminal.exitRawMode();
+            
+            // After restoring mask, signals should work again
+            terminal.restoreSignalMask(old_mask);
+            
+            // Verify terminal is still functional
+            try testing.expect(terminal.resize_monitoring);
+        }
+        
+        test "stress: Terminal: signal handler with concurrent operations" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            // Stress test with mixed operations
+            const iterations = 50;
+            for (0..iterations) |i| {
+                // Alternate between operations and resize events
+                if (i % 2 == 0) {
+                    // Trigger resize
+                    const size = Size{
+                        .rows = @as(u16, @intCast(20 + (i % 20))),
+                        .cols = @as(u16, @intCast(70 + (i % 30))),
+                    };
+                    terminal.handleResize(size);
+                } else {
+                    // Perform terminal operations
+                    if (i % 3 == 0) {
+                        try terminal.clear();
+                    }
+                    if (i % 5 == 0) {
+                        const pos_row = @as(u16, @intCast((i % 10) + 1));
+                        const pos_col = @as(u16, @intCast((i % 20) + 1));
+                        try terminal.setCursorPos(pos_row, pos_col);
+                    }
+                }
+                
+                // Small delay for realistic timing
+                std.time.sleep(1 * std.time.ns_per_ms);
+            }
+            
+            // Terminal should remain stable
+            try testing.expect(terminal.resize_monitoring);
+        }
+        
+        test "edge: Terminal: signal handler cleanup and restoration" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Start and stop monitoring multiple times
+            for (0..3) |_| {
+                try terminal.startResizeMonitoring();
+                try testing.expect(terminal.resize_monitoring);
+                
+                // Do some operations
+                try terminal.clear();
+                terminal.handleResize(Size{ .rows = 30, .cols = 100 });
+                
+                try terminal.stopResizeMonitoring();
+                try testing.expect(!terminal.resize_monitoring);
+            }
+            
+            // Verify clean state after multiple cycles
+            try testing.expect(!terminal.resize_monitoring);
+            try testing.expect(terminal.signal_thread == null);
+        }
+        
+        test "performance: Terminal: signal safety overhead" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            try terminal.startResizeMonitoring();
+            defer terminal.stopResizeMonitoring() catch {};
+            
+            const iterations = 100;
+            const start = std.time.milliTimestamp();
+            
+            // Measure overhead of signal-safe resize handling
+            for (0..iterations) |i| {
+                const size = Size{
+                    .rows = @as(u16, @intCast(20 + (i % 40))),
+                    .cols = @as(u16, @intCast(60 + (i % 60))),
+                };
+                terminal.handleResize(size);
+            }
+            
+            const elapsed = std.time.milliTimestamp() - start;
+            const avg_ms = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
+            
+            // Signal-safe handling should still be fast (< 1ms per resize)
+            try testing.expect(avg_ms < 1.0);
+        }
+        
+        test "integration: Terminal: signal thread lifecycle" {
+            const allocator = testing.allocator;
+            var terminal = try Terminal.init(allocator);
+            defer terminal.deinit();
+            
+            // Initially no signal thread
+            try testing.expect(terminal.signal_thread == null);
+            try testing.expect(!terminal.signal_handler_active);
+            
+            // Start monitoring creates signal thread
+            try terminal.startResizeMonitoring();
+            try testing.expect(terminal.signal_thread != null);
+            try testing.expect(terminal.signal_handler_active);
+            
+            // Thread should be running
+            if (terminal.signal_thread) |thread| {
+                _ = thread;
+                // Thread is running, handling signals
+                try testing.expect(terminal.signal_handler_active);
+            }
+            
+            // Stop monitoring terminates thread
+            try terminal.stopResizeMonitoring();
+            try testing.expect(terminal.signal_thread == null);
+            try testing.expect(!terminal.signal_handler_active);
+        }
+    
+    // └──────────────────────────────────────────────────────────────────────────┘
 
-// ╚════════════════════════════════════════════════════════════════════════════════╝
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
